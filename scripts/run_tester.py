@@ -12,10 +12,11 @@ from shared.artifact_paths import (
     analysis_path,
     developer_handoff_path,
     developer_implementation_path,
+    generated_tasks_dir,
     reviewer_report_path,
     tester_report_path,
 )
-from shared.task_utils import extract_task_code
+from shared.task_utils import extract_task_code, find_latest_task
 
 
 VALID_TESTER_OUTCOMES = {"READY", "RETRY", "BLOCKED"}
@@ -61,6 +62,35 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def select_tester_task(
+    *,
+    repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
+    goal: str | None,
+    planned_task: tuple[Path, str] | None = None,
+) -> tuple[Path, str]:
+    try:
+        return select_developer_task(
+            repo_root=repo_root,
+            goal=goal,
+            workspace_root=workspace_root,
+            target_name=target_name,
+            planned_task=planned_task,
+        )
+    except FileNotFoundError:
+        if planned_task is not None or goal:
+            raise
+
+    candidate_dirs = [generated_tasks_dir(workspace_root, target_name), workspace_root / "backlog" / "tasks"]
+    for task_dir in candidate_dirs:
+        latest_task = find_latest_task(task_dir)
+        if latest_task is not None:
+            return latest_task, _read_text(latest_task)
+
+    raise FileNotFoundError("Tester phase requires at least one backlog task to inspect.")
+
+
 def determine_tester_outcome(inputs: TesterInputs) -> tuple[str, str]:
     if not inputs.developer_artifact or not inputs.implementation_artifact:
         return (
@@ -92,11 +122,11 @@ def resolve_inputs(
         task_path = (workspace_root / explicit_task).resolve()
         task_content = _read_text(task_path)
     else:
-        task_path, task_content = select_developer_task(
+        task_path, task_content = select_tester_task(
             repo_root=repo_root,
-            goal=goal,
             workspace_root=workspace_root,
             target_name=target_name,
+            goal=goal,
             planned_task=planned_task,
         )
 

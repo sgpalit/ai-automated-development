@@ -141,11 +141,9 @@ def apply_repository_state_rules(args: argparse.Namespace, state: str) -> bool:
 
     if state == "MVP" and args.phase == "tester" and not args.auto_continue:
         print(
-            "Repository state MVP limits the local runner to reviewer phase while "
-            "MVP delivery is still in progress. Adjusting --phase tester to reviewer."
+            "Repository state MVP allows explicit tester runs for a single-cycle validation pass. "
+            "Use --auto-continue as well if you want repeated tester-gated iteration."
         )
-        args.phase = "reviewer"
-        phase_adjusted = True
 
     if state == "MVP_DONE" and args.phase in {"reviewer", "tester"}:
         print(

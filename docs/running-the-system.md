@@ -47,15 +47,15 @@ Before running the system, ensure the repository contains:
 
 ## Wrapper behavior
 
-The `run-agents.sh` wrapper starts the local cycle runner in developer execution mode by default:
+The `run-agents.sh` wrapper starts the local cycle runner in tester execution mode by default so a normal run can reach developer, reviewer, and tester in one cycle:
 
     ./run-agents.sh
     ./run-agents.sh "Your goal here"
 
 This is equivalent to invoking:
 
-    python3 scripts/run_cycle.py --phase developer --execute
-    python3 scripts/run_cycle.py --phase developer --execute "Your goal here"
+    python3 scripts/run_cycle.py --phase tester --execute
+    python3 scripts/run_cycle.py --phase tester --execute "Your goal here"
 
 Use a dry run when you want to inspect what would execute without making changes:
 
@@ -120,6 +120,8 @@ Without `--execute`, `run_developer.py` prepares developer artifacts only.
 When no goal is provided, the local runner uses `docs/mvp.md` as default context and selects the next eligible backlog task automatically.
 
 In supervised runs, a human typically reviews each phase outcome before continuing to the next step.
+
+An explicit `--phase tester` run in `MVP` now performs a single-cycle validation pass. Repeated tester-gated iteration still requires `--auto-continue`.
 
 In `MVP` auto-continue mode, the orchestrator may continue automatically when the current repository state and agent outputs allow it, and it stops when approval, retries, or blockers require intervention. Stop reasons are recorded under:
 
@@ -213,7 +215,7 @@ Execution mode:
 - run `./run-agents.sh`
 - or run `./run-agents.sh "Your goal here"`
 - for inspection only, run `./run-agents.sh --dry-run`
-- the wrapper uses developer execution mode by default
+- the wrapper uses tester execution mode by default so reviewer and tester phases can run in the same cycle when planner/developer succeed
 - the selected task is moved to `in-progress`
 - repository file changes returned by the local OpenAI prompt utility are applied locally when execution is enabled
 

@@ -76,7 +76,7 @@ Other available scripts:
 
 What they do:
 
-- `run-agents.sh` defaults to `scripts/run_cycle.py --phase developer --execute` and forwards any extra arguments
+- `run-agents.sh` defaults to `scripts/run_cycle.py --phase tester --execute` and forwards any extra arguments
 - `run_analyst.py` reads `prompts/agents/analyst.md` and writes `agents/<target-name>/analysis/repo-analysis.md`
 - `run_planner.py` reads `agents/<target-name>/analysis/repo-analysis.md` and writes one grounded backlog task when needed
 - `run_developer.py` writes a developer handoff and an implementation prompt artifact for the selected task, and can optionally apply repo changes with `--execute`
@@ -120,7 +120,7 @@ The planner expects `agents/<target-name>/analysis/repo-analysis.md` to already 
 
 # 7. Run the Thin-Slice Local CLI
 
-Use this when you want a simple end-to-end analyst + planner + developer execution pass from one command:
+Use this when you want a simple end-to-end analyst + planner + developer + reviewer + tester execution pass from one command:
 
 ```bash
 ./run-agents.sh
@@ -130,9 +130,10 @@ Use this when you want a simple end-to-end analyst + planner + developer executi
 Useful options:
 
 ```bash
-./run-agents.sh --phase developer --execute
+./run-agents.sh --phase tester --execute
 ./run-agents.sh "Improve onboarding documentation" --phase analyst
 ./run-agents.sh "Improve onboarding documentation" --phase developer --execute
+./run-agents.sh "Improve onboarding documentation" --phase tester --execute
 ./run-agents.sh "Improve onboarding documentation" --dry-run
 ./run-agents.sh "Improve onboarding documentation" --repo /path/to/target-repo
 ```
@@ -141,11 +142,16 @@ Notes:
 
 - `--phase analyst` runs only the analyst phase
 - `--phase developer` runs analyst, planner, and developer
-- `run-agents.sh` defaults to developer execution
+- `--phase reviewer` runs analyst, planner, developer, and reviewer
+- `--phase tester` runs analyst, planner, developer, reviewer, and tester
+- `run-agents.sh` defaults to tester execution so a normal run can reach reviewer and tester in the same cycle
 - without a goal prompt, the runner reuses the backlog and selects the next eligible task automatically
 - `--dry-run` prints outputs without writing files
-- the developer phase writes a handoff and an implementation prompt under `agents/implementation/developer/`
+- the developer phase writes artifacts under `agents/<target-name>/handoff/developer/` and `agents/<target-name>/implementation/developer/`
+- reviewer outputs are written under `agents/<target-name>/review/reviewer/`
+- tester outputs are written under `agents/<target-name>/test/`
 - `run-agents.sh` already includes `--execute`; use the Python entry points directly if you want artifact-only behavior
+- in `MVP`, an explicit `--phase tester` run performs a single-cycle validation pass; repeated tester-gated iteration still requires `--auto-continue`
 - use `--target-config <name>` to switch to another configured target repository
 
 ---
@@ -229,10 +235,11 @@ ai-automated-development
 |  `- <target-name>/
 |     |- analysis/
 |     |- backlog/tasks/
-|     |- handoff/
-|     |- implementation/
-|     |- review/
+|     |- handoff/developer/
+|     |- implementation/developer/
+|     |- review/reviewer/
 |     |- test/
+|     |- orchestrator/stop-reasons/
 |     `- logs/
 |- docs/
 |- prompts/
