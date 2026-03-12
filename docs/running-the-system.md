@@ -46,26 +46,40 @@ Create these directories if they do not exist:
 
 ## Thin-Slice CLI (Analyst + Planner)
 
-You can run a minimal local cycle with:
+Install dependencies:
 
-    python3 scripts/run_cycle.py "<your goal>"
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
 
-This command runs:
+Set environment variables (recommended via `.env`):
 
-1. `analyst` phase (writes `analysis/repo-analysis.md`)
-2. `planner` phase (creates or updates a task in `backlog/tasks/`)
+    cp .env.example .env
+    # Edit .env and set OPENAI_API_KEY
 
-Useful options:
+Minimum `.env` values:
 
-- run analyst only:
+    OPENAI_API_KEY=<your_api_key>
+    OPENAI_MODEL=gpt-4o
+    TARGET_REPO_PATH=.
 
-      python3 scripts/run_cycle.py "<your goal>" --phase analyst
+Run the Analyst phase:
 
-- preview changes without writing files:
+    python3 scripts/run_analyst.py
 
-      python3 scripts/run_cycle.py "<your goal>" --dry-run
+This creates:
 
-The script is intentionally thin so `developer`, `reviewer`, and `tester` phases can be added later.
+    analysis/repo-analysis.md
+
+Run the Planner phase:
+
+    python3 scripts/run_planner.py
+
+This creates one or more backlog task files in:
+
+    backlog/tasks/TASK-###-short-description.md
+
+These scripts are intentionally minimal so additional agent runners can be added later (`run_developer.py`, `run_reviewer.py`, `run_tester.py`).
 
 ---
 
