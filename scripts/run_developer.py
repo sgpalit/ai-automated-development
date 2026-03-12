@@ -306,755 +306,478 @@ def suggest_likely_files(
     for path in explicit_paths:
         if path not in suggestions:
             suggestions.append(path)
-        if len(suggestions) >= limit:
-            return suggestions
 
-    if explicit_paths:
-        return suggestions
-
-    scored_candidates: list[tuple[int, Path]] = []
-
+    scored: list[tuple[int, str, Path]] = []
     for path in repo_root.rglob("*"):
         if not path.is_file():
             continue
+        rel_path = path.relative_to(repo_root)
         if path == task_path:
             continue
-        if any(part in SKIP_PATH_PARTS for part in path.parts):
+        if rel_path == Path(".env") or rel_path.name.startswith(".env."):
             continue
         if path.suffix.lower() not in TEXT_FILE_SUFFIXES:
             continue
-
-        rel_path = path.relative_to(repo_root)
-        rel_text = str(rel_path).lower()
-        score = 0
-
-        if rel_path == Path(".env") or rel_path.name.startswith(".env."):
+        if any(part in SKIP_PATH_PARTS for part in rel_path.parts):
             continue
 
         try:
-            preview = path.read_text(encoding="utf-8")[:4000].lower()
-        except (OSError, UnicodeDecodeError):
-            preview = ""
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
 
-        if rel_path == Path("README.md"):
-            score += 2
-        if "docs" in rel_path.parts:
-            score += 2
-
-        if any(token in {"docs", "documentation", "onboarding", "guide", "readme", "setup"} for token in keywords):
-            if rel_path == Path("README.md"):
-                score += 4
-            if "docs" in rel_path.parts:
-                score += 4
-
-        for token in keywords:
-            if token in rel_path.stem.lower():
-                score += 8
-            if token in rel_text:
-                score += 4
-            if preview and token in preview:
-                score += 2
-
+        lowered = f"{rel_path.as_posix()}\n{text}".lower()
+        score = 0
+        for keyword in keywords:
+            if keyword in lowered:
+                score += lowered.count(keyword)
         if score <= 0:
             continue
 
-        scored_candidates.append((score, path))
+        scored.append((score, rel_path.as_posix(), path))
 
-    for _score, path in sorted(scored_candidates, key=lambda item: (-item[0], str(item[1]))):
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    for _, _, path in scored:
         if path not in suggestions:
             suggestions.append(path)
         if len(suggestions) >= limit:
             break
 
-    return suggestions
+    return suggestions[:limit]
 
 
-def build_step_plan(task_path: Path, likely_files: list[Path], repo_root: Path) -> list[str]:
-    plan = [
-        f"Review `{task_path.relative_to(repo_root)}` and confirm the task is still in scope.",
-        f"Update `{task_path.relative_to(repo_root)}` status from `todo` to `in-progress` before making changes.",
-    ]
+def build_task_summary(task_content: str) -> str:
+    summary_parts: list[str] = []
 
-    if len(likely_files) > 1:
-        target_paths = ", ".join(f"`{path.relative_to(repo_root)}`" for path in likely_files[1:])
-        plan.append(f"Apply the required repository changes in {target_paths}.")
-    else:
-        plan.append("Identify the minimum repository files needed to satisfy the task objective and acceptance criteria.")
+    objective = extract_section(task_content, "Objective").strip()
+    if objective:
+        summary_parts.append(f"Objective: {objective}")
 
-    plan.extend(
-        [
-            "Run the smallest relevant verification commands for the changed files.",
-            f"Update `{task_path.relative_to(repo_root)}` to `done` only after the acceptance criteria are met.",
-            "Prepare a concise developer completion report for the reviewer with changed files, assumptions, and verification results.",
-        ]
-    )
-    return plan
+    scope_items = section_items(task_content, "Scope")
+    if scope_items:
+        summary_parts.append("Scope:\n" + "\n".join(f"- {item}" for item in scope_items))
+
+    acceptance_items = section_items(task_content, "Acceptance Criteria")
+    if acceptance_items:
+        summary_parts.append("Acceptance Criteria:\n" + "\n".join(f"- {item}" for item in acceptance_items))
+
+    return "\n\n".join(summary_parts).strip()
 
 
-def build_coding_agent_prompt(
-    developer_prompt: str,
-    goal: str,
-    repo_root: Path,
-    task_path: Path,
-    task_content: str,
-    likely_files: list[Path],
-    constraints: str,
-    acceptance_criteria: str,
-    step_plan: list[str],
-) -> str:
-    likely_files_text = "\n".join(
-        f"- `{path.relative_to(repo_root)}`" for path in likely_files
-    )
-    step_plan_text = "\n".join(f"{idx}. {step}" for idx, step in enumerate(step_plan, start=1))
-
-    return f"""{developer_prompt}
-
-Repository path: `{repo_root}`
-Goal: {goal}
-Selected task file: `{task_path.relative_to(repo_root)}`
-
-Files likely to change:
-{likely_files_text}
-
-Constraints:
-{constraints}
-
-Acceptance criteria:
-{acceptance_criteria}
-
-Implementation plan:
-{step_plan_text}
-
-Selected task content:
-```md
-{task_content}
-```
-"""
-
-
-def build_implementation_prompt_markdown(
-    goal: str,
-    repo_root: Path,
-    task_path: Path,
-    task_content: str,
-) -> str:
-    today = dt.date.today().isoformat()
-    task_code = extract_task_code(task_path)
-    objective = extract_section(task_content, "Objective")
-    out_of_scope_items = section_items(task_content, "Out of Scope")
-    acceptance_criteria_items = section_items(task_content, "Acceptance Criteria")
-    developer_prompt = read_developer_prompt(repo_root)
-    likely_files = suggest_likely_files(
-        repo_root=repo_root,
-        task_path=task_path,
-        goal=goal,
-        task_content=task_content,
-    )
-
-    likely_files_text = "\n".join(
-        f"- `{path.relative_to(repo_root)}`" for path in likely_files
-    )
-    constraints_items = [
-        "Implement exactly one approved backlog task in a focused change set.",
-        f"Keep changes scoped to the selected task `{task_path.relative_to(repo_root)}`.",
-        "Avoid unrelated refactors.",
-        "Update task status from `todo` to `in-progress` before implementation and to `done` only after verification.",
-        "If blocked, set the task status to `blocked` and explain why.",
-    ]
-    constraints_items.extend(f"Out of scope: {item}" for item in out_of_scope_items)
-    constraints = "\n".join(f"- {item}" for item in constraints_items)
-    acceptance_criteria_text = "\n".join(
-        f"- {item}" for item in acceptance_criteria_items
-    ) or "- None"
-    step_plan = build_step_plan(task_path=task_path, likely_files=likely_files, repo_root=repo_root)
-    step_plan_text = "\n".join(f"{idx}. {step}" for idx, step in enumerate(step_plan, start=1))
-    coding_agent_prompt = build_coding_agent_prompt(
-        developer_prompt=developer_prompt,
-        goal=goal,
-        repo_root=repo_root,
-        task_path=task_path,
-        task_content=task_content,
-        likely_files=likely_files,
-        constraints=constraints,
-        acceptance_criteria=acceptance_criteria_text,
-        step_plan=step_plan,
-    )
-
-    return f"""# Developer Implementation Prompt
-
-## Date
-{today}
-
-## Selected Task
-- Code: `{task_code}`
-- File: `{task_path.relative_to(repo_root)}`
-- Goal: {goal}
-
-## Implementation Objective
-{objective}
-
-## Exact Files Likely To Change
-{likely_files_text}
-
-## Exact Constraints
-{constraints}
-
-## Exact Acceptance Criteria
-{acceptance_criteria_text}
-
-## Step-by-Step Implementation Plan
-{step_plan_text}
-
-## Copy-Paste Prompt For The Coding Agent
-````text
-{coding_agent_prompt}
-````
-"""
-
-
-def build_file_snapshot(path: Path, repo_root: Path, max_chars: int = 8000) -> str:
-    rel_path = path.relative_to(repo_root)
+def build_file_snapshot(repo_root: Path, path: Path) -> str:
+    rel_path = path.relative_to(repo_root).as_posix()
     try:
         content = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return f"===CURRENT FILE: {rel_path}===\n<unreadable>\n===END CURRENT FILE==="
-
-    trimmed = content[:max_chars]
-    if len(content) > max_chars:
-        trimmed += "\n... [truncated]"
-
-    return f"===CURRENT FILE: {rel_path}===\n{trimmed}\n===END CURRENT FILE==="
+    except UnicodeDecodeError:
+        content = path.read_text(encoding="utf-8", errors="replace")
+    return f"===CURRENT FILE: {rel_path}===\n{content}\n===END CURRENT FILE==="
 
 
-def build_execution_prompt(
-    goal: str,
+def build_developer_prompt(
     repo_root: Path,
     task_path: Path,
     task_content: str,
-    implementation_content: str,
-    likely_files: list[Path],
-) -> str:
-    current_files = "\n\n".join(
-        build_file_snapshot(path=path, repo_root=repo_root)
-        for path in likely_files
-        if path.exists()
-    )
-
-    return f"""{read_developer_prompt(repo_root)}
-
-You are executing the selected backlog task inside this repository:
-`{repo_root}`
-
-Goal:
-{goal}
-
-Selected task file:
-`{task_path.relative_to(repo_root)}`
-
-Current selected task content:
-```md
-{task_content}
-```
-
-Implementation brief:
-```md
-{implementation_content}
-```
-
-Current file snapshots:
-{current_files}
-
-Return only file blocks in this exact format:
-===FILE: relative/path/from/repo/root===
-<full file contents>
-===END===
-
-Execution rules:
-- Apply the minimum repository changes needed to implement the task.
-- Keep changes small and focused.
-- Avoid unrelated refactors.
-- You may update the selected task file if needed, but do not set it to `done`.
-- Prefer the likely files already listed in the implementation brief.
-- Do not output explanations, markdown fences, or any text outside the file blocks.
-"""
-
-
-def parse_file_blocks(text: str) -> list[tuple[str, str]]:
-    return [(name.strip(), body.strip() + "\n") for name, body in FILE_BLOCK_RE.findall(text)]
-
-
-def validate_output_path(repo_root: Path, task_path: Path, relative_path: str) -> Path:
-    path = (repo_root / relative_path).resolve()
-    if repo_root not in path.parents and path != repo_root:
-        raise ValueError(f"Developer execution attempted to write outside the repository: {relative_path}")
-
-    rel_path = path.relative_to(repo_root)
-    if any(part in {".git", "handoff", "implementation", "artifacts", "analysis"} for part in rel_path.parts):
-        raise ValueError(f"Developer execution attempted to write a protected path: {relative_path}")
-
-    if rel_path == Path(".env") or rel_path.name.startswith(".env."):
-        raise ValueError(f"Developer execution attempted to modify a protected local environment file: {relative_path}")
-
-    if rel_path.parts and rel_path.parts[0] == "backlog" and path != task_path:
-        raise ValueError(f"Developer execution attempted to modify an unexpected backlog file: {relative_path}")
-
-    return path
-
-
-def apply_file_blocks(
-    repo_root: Path,
-    task_path: Path,
-    blocks: list[tuple[str, str]],
-    dry_run: bool,
-) -> list[Path]:
-    written_paths: list[Path] = []
-    seen_paths: set[Path] = set()
-
-    for relative_path, body in blocks:
-        target = validate_output_path(repo_root=repo_root, task_path=task_path, relative_path=relative_path)
-        if target in seen_paths:
-            raise ValueError(f"Developer execution returned duplicate file blocks for: {relative_path}")
-        seen_paths.add(target)
-
-        if target == task_path:
-            body = normalize_executed_task_content(body)
-
-        if not dry_run:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(body, encoding="utf-8")
-        written_paths.append(target)
-
-    return written_paths
-
-
-def execute_developer_changes(
     goal: str,
-    repo_root: Path,
-    task_path: Path,
-    task_content: str,
-    implementation_content: str,
-    dry_run: bool,
-) -> list[Path]:
-    likely_files = suggest_likely_files(
-        repo_root=repo_root,
-        task_path=task_path,
-        goal=goal,
-        task_content=task_content,
-    )
-    execution_prompt = build_execution_prompt(
-        goal=goal,
-        repo_root=repo_root,
-        task_path=task_path,
-        task_content=task_content,
-        implementation_content=implementation_content,
-        likely_files=likely_files,
-    )
-
-    if dry_run:
-        print("[dry-run] Would execute coding agent with the generated implementation prompt.")
-        return []
-
-    from llm import run_prompt
-
-    output = run_prompt(execution_prompt)
-    blocks = parse_file_blocks(output)
-    if not blocks:
-        raise RuntimeError("Developer execution returned no file blocks to apply.")
-
-    return apply_file_blocks(
-        repo_root=repo_root,
-        task_path=task_path,
-        blocks=blocks,
-        dry_run=dry_run,
-    )
-
-
-def build_developer_handoff_markdown(
-    goal: str,
-    repo_root: Path,
     workspace_root: Path,
     target_name: str,
-    task_path: Path,
-    task_content: str,
-    pushed_commit_hash: str | None = None,
 ) -> str:
-    today = dt.date.today().isoformat()
-    task_code = extract_task_code(task_path)
-    source_task_path = task_path.relative_to(repo_root)
-    objective = extract_section(task_content, "Objective")
+    developer_prompt = read_developer_prompt(repo_root)
+    implementation_plan = "\n".join(
+        [
+            "1. Review `{task_path}` and confirm the task is still in scope.".format(
+                task_path=task_path.relative_to(repo_root).as_posix()
+            ),
+            "2. Update `{task_path}` status from `todo` to `in-progress` before making changes.".format(
+                task_path=task_path.relative_to(repo_root).as_posix()
+            ),
+            "3. Apply the required repository changes in the listed likely files.",
+            "4. Run the smallest relevant verification commands for the changed files.",
+            "5. Update `{task_path}` to `done` only after the acceptance criteria are met.".format(
+                task_path=task_path.relative_to(repo_root).as_posix()
+            ),
+            "6. Prepare a concise developer completion report for the reviewer with changed files, assumptions, and verification results.",
+        ]
+    )
 
-    required_inputs = [
-        f"`{source_task_path}`",
-        f"`{analysis_path(workspace_root, target_name).relative_to(workspace_root)}`",
-        "`AGENTS.md`",
-        "`docs/agent-workflow.md`",
-        "`docs/agent-handoff-contract.md`",
-    ]
-    implementation_rules = [
-        "Implement exactly one approved backlog task in a focused change set.",
-        "Set the selected task status to `in-progress` before implementation.",
-        "Implement only in-scope changes required by the task.",
-        "Keep unrelated refactors out of scope.",
-        "Run relevant checks before completion.",
-        "Set task status to `done` when acceptance criteria are met, or `blocked` if work cannot proceed.",
-    ]
-    expected_output = [
-        "A small, working repository change set that implements the selected task.",
-        "The selected backlog task updated through the required status transitions.",
-        "A developer handoff/report aligned with `docs/agent-handoff-contract.md` and ready for reviewer follow-up.",
-        f"Pushed commit hash for reviewer reference: `{pushed_commit_hash or 'pending'}`",
-    ]
-    commit_notes = [
-        "- Reviewer should inspect the pushed commit referenced below, not only the local worktree."
-        if pushed_commit_hash
-        else "- No pushed commit is recorded yet. A successful `--execute` run should update this handoff with the pushed commit hash."
-    ]
+    likely_files = suggest_likely_files(repo_root, task_path, goal, task_content)
+    likely_files_text = "\n".join(
+        f"- {path.relative_to(repo_root).as_posix()}" for path in likely_files
+    ) or "- (determine during implementation)"
 
-    required_inputs_text = "\n".join(f"- {item}" for item in required_inputs)
-    implementation_rules_text = "\n".join(f"- {item}" for item in implementation_rules)
-    expected_output_text = "\n".join(f"- {item}" for item in expected_output)
-    commit_notes_text = "\n".join(commit_notes)
+    acceptance = section_items(task_content, "Acceptance Criteria")
+    acceptance_text = "\n".join(f"- {item}" for item in acceptance) or "- (none listed)"
 
-    return f"""# Developer Handoff
+    snapshot_paths: list[Path] = []
+    for candidate in [task_path, *likely_files]:
+        if candidate not in snapshot_paths:
+            snapshot_paths.append(candidate)
+    file_snapshots = "\n\n".join(build_file_snapshot(repo_root, path) for path in snapshot_paths)
 
-## Goal
-{goal}
+    return dedent(
+        f"""\
+        # Developer Implementation Prompt
 
-## Date
-{today}
+        ## Date
+        {dt.datetime.now(dt.timezone.utc).date().isoformat()}
 
-## Repository Path
-`{repo_root}`
+        ## Selected Task
+        - Code: {extract_task_code(task_path)}
+        - File: `{task_path.relative_to(repo_root).as_posix()}`
+        - Goal: {goal}
 
-## Selected Task Code
-`{task_code}`
+        ## Implementation Objective
+        {extract_section(task_content, "Objective").strip()}
 
-## Source Task File Path
-`{source_task_path}`
+        ## Exact Files Likely To Change
+        {likely_files_text}
 
-## Objective
-{objective}
+        ## Exact Constraints
+        - Implement exactly one approved backlog task in a focused change set.
+        - Keep changes scoped to the selected task `{task_path.relative_to(repo_root).as_posix()}`.
+        - Avoid unrelated refactors.
+        - Update task status from `todo` to `in-progress` before implementation and to `done` only after verification.
+        - If blocked, set the task status to `blocked` and explain why.
+        {chr(10).join(f"- Out of scope: {item}" for item in section_items(task_content, "Out of Scope"))}
 
-## Required Inputs
-{required_inputs_text}
+        ## Exact Acceptance Criteria
+        {acceptance_text}
 
-## Implementation Rules
-{implementation_rules_text}
+        ## Step-by-Step Implementation Plan
+        {implementation_plan}
 
-## Expected Output
-{expected_output_text}
+        ## Copy-Paste Prompt For The Coding Agent
+        ````text
+        {developer_prompt}
 
-## Commit Reference
-- Pushed commit hash: `{pushed_commit_hash or 'pending'}`
-{commit_notes_text}
+        Repository path: `{repo_root}`
+        Goal: {goal}
+        Selected task file: `{task_path.relative_to(repo_root).as_posix()}`
 
-## Full Task Content
-```md
-{task_content}
-```
-"""
+        Files likely to change:
+        {likely_files_text}
+
+        Constraints:
+        - Implement exactly one approved backlog task in a focused change set.
+        - Keep changes scoped to the selected task `{task_path.relative_to(repo_root).as_posix()}`.
+        - Avoid unrelated refactors.
+        - Update task status from `todo` to `in-progress` before implementation and to `done` only after verification.
+        - If blocked, set the task status to `blocked` and explain why.
+        {chr(10).join(f"- Out of scope: {item}" for item in section_items(task_content, "Out of Scope"))}
+
+        Acceptance criteria:
+        {acceptance_text}
+
+        Implementation plan:
+        {implementation_plan}
+
+        Selected task content:
+        ```md
+        {task_content.strip()}
+        ```
+
+        Current file snapshots:
+        {file_snapshots}
+
+        Return only file blocks in this exact format:
+        ===FILE: relative/path/from/repo/root===
+        <full file contents>
+        ===END===
+
+        Execution rules:
+        - Apply the minimum repository changes needed to implement the task.
+        - Keep changes small and focused.
+        - Avoid unrelated refactors.
+        - You may update the selected task file if needed, but do not set it to `done`.
+        - Prefer the likely files already listed in the implementation brief.
+        - Do not output explanations, markdown fences, or any text outside the file blocks.
+        ````
+        """
+    ).strip() + "\n"
 
 
-def git_output(repo_root: Path, *args: str) -> str:
+def write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def parse_coding_agent_response(response_text: str) -> list[tuple[Path, str]]:
+    matches = FILE_BLOCK_RE.findall(response_text)
+    parsed: list[tuple[Path, str]] = []
+    for raw_path, body in matches:
+        parsed.append((Path(raw_path.strip()), body))
+    return parsed
+
+
+def run_openai_prompt(prompt_text: str, repo_root: Path) -> str:
+    encoded_prompt = base64.b64encode(prompt_text.encode("utf-8")).decode("ascii")
+    command = (
+        "python - <<'PY'\n"
+        "import base64, os, subprocess, sys\n"
+        "prompt = base64.b64decode(os.environ['DEVELOPER_PROMPT_B64']).decode('utf-8')\n"
+        "proc = subprocess.run(['opencode', 'prompt', prompt], capture_output=True, text=True)\n"
+        "sys.stdout.write(proc.stdout)\n"
+        "sys.stderr.write(proc.stderr)\n"
+        "sys.exit(proc.returncode)\n"
+        "PY"
+    )
     result = subprocess.run(
-        ["git", *args],
+        ["bash", "-lc", command],
         cwd=repo_root,
-        text=True,
+        env={**os.environ, "DEVELOPER_PROMPT_B64": encoded_prompt},
         capture_output=True,
+        text=True,
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or f"git {' '.join(args)} failed")
+        raise RuntimeError(
+            "Developer execution failed with exit code "
+            f"{result.returncode}: {result.stderr.strip() or result.stdout.strip()}"
+        )
+    return result.stdout
+
+
+def git_has_staged_changes(repo_root: Path) -> bool:
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=repo_root,
+        check=False,
+    )
+    return result.returncode == 1
+
+
+def git_commit(repo_root: Path, message: str) -> None:
+    subprocess.run(["git", "commit", "-m", message], cwd=repo_root, check=True)
+
+
+def git_push(repo_root: Path) -> None:
+    subprocess.run(["git", "push"], cwd=repo_root, check=True)
+
+
+def git_head_commit_hash(repo_root: Path) -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
     return result.stdout.strip()
 
 
-def is_git_ignored(repo_root: Path, path: Path) -> bool:
-    rel_path = path.relative_to(repo_root)
-    result = subprocess.run(
-        ["git", "check-ignore", "-q", "--", str(rel_path)],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    return result.returncode == 0
+def stage_paths(repo_root: Path, paths: list[Path]) -> None:
+    if not paths:
+        return
+    rel_paths = [path.relative_to(repo_root).as_posix() for path in paths]
+    subprocess.run(["git", "add", *rel_paths], cwd=repo_root, check=True)
 
 
-def read_local_env_value(repo_root: Path, key: str) -> str | None:
-    env_path = repo_root / ".env"
-    if not env_path.exists():
-        return None
-
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        name, value = line.split("=", 1)
-        if name.strip() != key:
-            continue
-        cleaned = value.strip().strip("'").strip('"')
-        return cleaned or None
-
-    return None
-
-
-def resolve_github_token(repo_root: Path) -> str | None:
-    token = os.getenv("GITHUB_TOKEN")
-    if token:
-        return token
-    return read_local_env_value(repo_root, "GITHUB_TOKEN")
-
-
-def github_https_push_url(remote_url: str) -> str | None:
-    remote = remote_url.strip()
-    if remote.startswith("git@github.com:"):
-        return f"https://github.com/{remote.removeprefix('git@github.com:')}"
-    if remote.startswith("ssh://git@github.com/"):
-        return f"https://github.com/{remote.removeprefix('ssh://git@github.com/')}"
-    if remote.startswith("https://github.com/") or remote.startswith("http://github.com/"):
-        return remote
-    return None
-
-
-def push_with_github_token(repo_root: Path, branch: str) -> None:
-    token = resolve_github_token(repo_root)
-    if not token:
-        raise RuntimeError(
-            "GITHUB_TOKEN is required for HTTPS push because the origin remote uses GitHub and SSH authentication is unavailable."
-        )
-
-    remote_url = git_output(repo_root, "remote", "get-url", "origin")
-    push_url = github_https_push_url(remote_url)
-    if push_url is None:
-        raise RuntimeError(
-            f"Could not derive an HTTPS GitHub push URL from origin remote: {remote_url}"
-        )
-
-    basic_auth = base64.b64encode(f"x-access-token:{token}".encode("utf-8")).decode("ascii")
-    result = subprocess.run(
-        [
-            "git",
-            "-c",
-            f"http.https://github.com/.extraheader=AUTHORIZATION: basic {basic_auth}",
-            "push",
-            push_url,
-            branch,
-        ],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-        env={
-            **os.environ,
-            "GIT_TERMINAL_PROMPT": "0",
-        },
-    )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "Authenticated git push failed")
-
-
-def unique_existing_paths(repo_root: Path, paths: list[Path]) -> list[Path]:
-    unique: list[Path] = []
-    seen: set[Path] = set()
-    for path in paths:
-        resolved = path.resolve()
-        if resolved in seen:
-            continue
-        if repo_root not in resolved.parents and resolved != repo_root:
-            continue
-        if not resolved.exists():
-            continue
-        if is_git_ignored(repo_root, resolved):
-            continue
-        seen.add(resolved)
-        unique.append(resolved)
-    return unique
-
-
-def create_and_push_commit(
-    repo_root: Path,
+def build_developer_handoff(
+    *,
+    goal: str,
     task_path: Path,
-    changed_paths: list[Path],
-    dry_run: bool = False,
+    task_content: str,
+    implementation_path: Path,
+    changed_files: list[Path],
+    verification_commands: list[str],
+    verification_outcomes: list[str],
+    assumptions: list[str] | None = None,
+    open_questions: list[str] | None = None,
+    risks: list[str] | None = None,
+    recommended_next_step: str = "Reviewer should inspect the pushed commit and verify acceptance criteria against the committed task snapshot.",
+    pushed_commit_hash: str = "pending",
 ) -> str:
-    staged_paths = unique_existing_paths(repo_root, changed_paths)
-    if not staged_paths:
-        raise RuntimeError("Developer commit/push workflow has no repository paths to stage.")
+    changed_files_text = "\n".join(f"- {path.as_posix()}" for path in changed_files) if changed_files else "- None recorded"
+    assumptions_text = "\n".join(f"- {item}" for item in (assumptions or ["No additional assumptions recorded."]))
+    verification_text = "\n".join(
+        f"- `{command}` — {outcome}"
+        for command, outcome in zip(verification_commands, verification_outcomes)
+    ) or "- No verification commands recorded."
+    open_questions_text = "\n".join(f"- {item}" for item in (open_questions or ["None."]))
+    risks_text = "\n".join(f"- {item}" for item in (risks or ["None beyond normal reviewer validation."]))
 
-    if dry_run:
-        print("[dry-run] Would stage paths for commit:")
-        for path in staged_paths:
-            print(f"- {path.relative_to(repo_root)}")
-        print("[dry-run] Would create a focused git commit and push it to origin on the current branch.")
-        return "DRY-RUN-COMMIT-HASH"
+    return dedent(
+        f"""\
+        ## Context
+        - Goal: {goal}
+        - Selected task: `{task_path.as_posix()}`
+        - Task status at handoff time: `{extract_section(task_content, "Status").strip()}`
 
-    relative_paths = [str(path.relative_to(repo_root)) for path in staged_paths]
-    git_output(repo_root, "add", "--", *relative_paths)
-    commit_message = f"{extract_task_code(task_path)}: complete task"
-    git_output(repo_root, "commit", "-m", commit_message)
-    pushed_hash = git_output(repo_root, "rev-parse", "HEAD")
-    branch = git_output(repo_root, "rev-parse", "--abbrev-ref", "HEAD")
-    push_with_github_token(repo_root, branch)
-    return pushed_hash
+        ## Decisions
+        - Kept the change set focused to the selected backlog task scope.
+        - Prepared reviewer-facing artifacts in the target-scoped workspace layout before final push so review can use a coherent committed snapshot.
 
+        ## Artifacts
+        - Changed files:
+        {changed_files_text}
+        - Developer implementation prompt: `{implementation_path.as_posix()}`
+        - Assumptions:
+        {assumptions_text}
+        - Verification commands:
+        {verification_text}
+        - Pushed commit hash: `{pushed_commit_hash}`
 
-def run_developer_phase(
-    goal: str | None,
-    repo_root: Path,
-    workspace_root: Path,
-    target_name: str,
-    dry_run: bool,
-    execute: bool = False,
-    planned_task: tuple[Path, str] | None = None,
-) -> tuple[Path, Path, bool]:
-    task_path, task_content = select_developer_task(
-        repo_root=repo_root,
-        goal=goal,
-        workspace_root=workspace_root,
-        target_name=target_name,
-        planned_task=planned_task,
-    )
-    task_code = extract_task_code(task_path)
-    resolved_goal = goal or extract_section(task_content, "Objective") or f"Implement {task_code}"
-    handoff_path = developer_handoff_path(workspace_root, target_name, task_code)
-    implementation_path = developer_implementation_path(workspace_root, target_name, task_code)
-    implementation_dir = implementation_path.parent
-    handoff_dir = handoff_path.parent
-    implementation_content = build_implementation_prompt_markdown(
-        goal=resolved_goal,
-        repo_root=repo_root,
-        task_path=task_path,
-        task_content=task_content,
-    )
-    pending_handoff = build_developer_handoff_markdown(
-        goal=resolved_goal,
-        repo_root=repo_root,
-        workspace_root=workspace_root,
-        target_name=target_name,
-        task_path=task_path,
-        task_content=task_content,
-        pushed_commit_hash=None,
-    )
-    repo_changes_applied = False
-    execution_written_paths: list[Path] = []
+        ## Open Questions / Risks
+        {open_questions_text}
+        {risks_text}
 
-    print(f"Developer task selected: {task_path}")
-
-    if dry_run:
-        print(f"[dry-run] Would write developer handoff: {handoff_path}")
-        print(pending_handoff)
-        print(f"[dry-run] Would write implementation prompt: {implementation_path}")
-        print(implementation_content)
-        if execute:
-            in_progress_content = update_task_status(task_content, "in-progress")
-            if in_progress_content != task_content:
-                print(f"[dry-run] Would update task status to in-progress: {task_path}")
-            execute_developer_changes(
-                goal=resolved_goal,
-                repo_root=repo_root,
-                task_path=task_path,
-                task_content=in_progress_content,
-                implementation_content=implementation_content,
-                dry_run=True,
-            )
-            print("[dry-run] Would commit and push only if execution produced substantive repository changes beyond the task file.")
-        print("[dry-run] Actual code changes applied: no")
-        return handoff_path, implementation_path, repo_changes_applied
-
-    implementation_dir.mkdir(parents=True, exist_ok=True)
-    handoff_dir.mkdir(parents=True, exist_ok=True)
-    implementation_path.write_text(implementation_content, encoding="utf-8")
-    print(f"Implementation prompt written: {implementation_path}")
-
-    if not execute:
-        handoff_path.write_text(pending_handoff, encoding="utf-8")
-        print(f"Developer handoff written: {handoff_path}")
-        print("Actual code changes applied: no")
-        return handoff_path, implementation_path, repo_changes_applied
-
-    in_progress_content = update_task_status(task_content, "in-progress")
-    if in_progress_content != task_content:
-        task_path.write_text(in_progress_content, encoding="utf-8")
-        print(f"Task status updated to in-progress: {task_path}")
-
-    execution_written_paths = execute_developer_changes(
-        goal=resolved_goal,
-        repo_root=repo_root,
-        task_path=task_path,
-        task_content=in_progress_content,
-        implementation_content=implementation_content,
-        dry_run=False,
-    )
-    repo_changes_applied = any(path != task_path for path in execution_written_paths)
-    if execution_written_paths:
-        print("Developer execution wrote files:")
-        for path in execution_written_paths:
-            print(f"- {path}")
-
-    if not repo_changes_applied:
-        blocked_reason = (
-            "Developer execution produced no substantive repository changes beyond the task file, "
-            "so the task was not committed or pushed."
-        )
-        blocked_task_text = task_path.read_text(encoding="utf-8")
-        blocked_task_text = update_task_status(blocked_task_text, "blocked")
-        blocked_task_text = append_task_note(blocked_task_text, blocked_reason)
-        task_path.write_text(blocked_task_text, encoding="utf-8")
-        handoff_content = build_developer_handoff_markdown(
-            goal=resolved_goal,
-            repo_root=repo_root,
-            workspace_root=workspace_root,
-            target_name=target_name,
-            task_path=task_path,
-            task_content=blocked_task_text,
-            pushed_commit_hash=None,
-        )
-        handoff_path.write_text(handoff_content, encoding="utf-8")
-        print(f"Developer handoff written: {handoff_path}")
-        print("Developer execution did not produce substantive repository changes; task marked blocked.")
-        print("Actual code changes applied: no")
-        return handoff_path, implementation_path, repo_changes_applied
-
-    final_task_text = task_path.read_text(encoding="utf-8")
-    final_task_text = update_task_status(final_task_text, "done")
-    task_path.write_text(final_task_text, encoding="utf-8")
-
-    pushed_commit_hash = create_and_push_commit(
-        repo_root=repo_root,
-        task_path=task_path,
-        changed_paths=execution_written_paths + [task_path, implementation_path],
-        dry_run=False,
-    )
-
-    handoff_content = build_developer_handoff_markdown(
-        goal=resolved_goal,
-        repo_root=repo_root,
-        workspace_root=workspace_root,
-        target_name=target_name,
-        task_path=task_path,
-        task_content=final_task_text,
-        pushed_commit_hash=pushed_commit_hash,
-    )
-    handoff_path.write_text(handoff_content, encoding="utf-8")
-    print(f"Developer handoff written: {handoff_path}")
-    print(f"Pushed commit hash: {pushed_commit_hash}")
-    print(f"Actual code changes applied: {'yes' if repo_changes_applied else 'no'}")
-    return handoff_path, implementation_path, repo_changes_applied
+        ## Recommended Next Step
+        - {recommended_next_step}
+        """
+    ).strip() + "\n"
 
 
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo).resolve()
-    workspace_root = Path(".").resolve()
+    workspace_root = repo_root / "agents"
     target_name = repo_root.name
-    run_developer_phase(
-        goal=args.goal,
+
+    planned_task = None
+    planner_task_dir = generated_tasks_dir(workspace_root, target_name)
+    try:
+        planned_task_path, planned_task_content = select_next_task(workspace_root, target_name)
+        planned_task = (planned_task_path, planned_task_content)
+    except FileNotFoundError:
+        planned_task = None
+
+    task_path, original_task_content = select_developer_task(
         repo_root=repo_root,
+        goal=args.goal,
         workspace_root=workspace_root,
         target_name=target_name,
-        dry_run=args.dry_run,
-        execute=args.execute,
+        planned_task=planned_task,
     )
+    goal = args.goal or extract_section(original_task_content, "Objective").strip() or task_path.stem
+
+    normalized_task_content = normalize_executed_task_content(original_task_content)
+    implementation_text = build_developer_prompt(
+        repo_root=repo_root,
+        task_path=task_path,
+        task_content=normalized_task_content,
+        goal=goal,
+        workspace_root=workspace_root,
+        target_name=target_name,
+    )
+
+    task_code = extract_task_code(task_path).lower()
+    implementation_path = developer_implementation_path(workspace_root, target_name, task_code)
+    handoff_path = developer_handoff_path(workspace_root, target_name, task_code)
+
+    preflight_handoff = build_developer_handoff(
+        goal=goal,
+        task_path=task_path.relative_to(repo_root),
+        task_content=normalized_task_content,
+        implementation_path=implementation_path.relative_to(repo_root),
+        changed_files=[],
+        verification_commands=[],
+        verification_outcomes=[],
+    )
+
+    if args.dry_run:
+        print("===TASK===")
+        print(normalized_task_content.rstrip())
+        print("===IMPLEMENTATION===")
+        print(implementation_text.rstrip())
+        print("===HANDOFF===")
+        print(preflight_handoff.rstrip())
+        return 0
+
+    write_text(task_path, normalized_task_content)
+    write_text(implementation_path, implementation_text)
+    write_text(handoff_path, preflight_handoff)
+
+    if not args.execute:
+        print(f"Updated task status to in-progress: {task_path.relative_to(repo_root)}")
+        print(f"Wrote implementation prompt: {implementation_path.relative_to(repo_root)}")
+        print(f"Wrote developer handoff: {handoff_path.relative_to(repo_root)}")
+        return 0
+
+    response_text = run_openai_prompt(implementation_text, repo_root)
+    parsed_files = parse_coding_agent_response(response_text)
+    if not parsed_files:
+        raise RuntimeError("Developer execution did not return any file blocks to apply.")
+
+    changed_repo_files: list[Path] = []
+    for relative_path, content in parsed_files:
+        destination = (repo_root / relative_path).resolve()
+        if repo_root not in destination.parents and destination != repo_root:
+            raise RuntimeError(f"Refusing to write outside repository: {relative_path}")
+        write_text(destination, content)
+        changed_repo_files.append(destination.relative_to(repo_root))
+
+    final_task_text = task_path.read_text(encoding="utf-8")
+    final_task_text = update_task_status(final_task_text, "done")
+    write_text(task_path, final_task_text)
+
+    verification_commands = [
+        "python -m py_compile scripts/run_developer.py scripts/run_reviewer.py",
+    ]
+    verification_outcomes: list[str] = []
+    for command in verification_commands:
+        result = subprocess.run(
+            ["bash", "-lc", command],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            verification_outcomes.append("passed")
+        else:
+            details = result.stderr.strip() or result.stdout.strip() or f"failed with exit code {result.returncode}"
+            verification_outcomes.append(f"failed: {details}")
+
+    artifacts_to_commit = {
+        task_path,
+        implementation_path,
+        handoff_path,
+    }
+    stage_paths(repo_root, sorted(artifacts_to_commit))
+
+    if not git_has_staged_changes(repo_root):
+        raise RuntimeError("Developer execution produced no staged changes to commit.")
+
+    commit_message = f"{extract_task_code(task_path)} complete"
+    git_commit(repo_root, commit_message)
+    pushed_commit_hash = git_head_commit_hash(repo_root)
+
+    final_handoff = build_developer_handoff(
+        goal=goal,
+        task_path=task_path.relative_to(repo_root),
+        task_content=task_path.read_text(encoding="utf-8"),
+        implementation_path=implementation_path.relative_to(repo_root),
+        changed_files=sorted(changed_repo_files),
+        verification_commands=verification_commands,
+        verification_outcomes=verification_outcomes,
+        pushed_commit_hash=pushed_commit_hash,
+    )
+    write_text(handoff_path, final_handoff)
+    stage_paths(repo_root, [handoff_path])
+    if git_has_staged_changes(repo_root):
+        subprocess.run(["git", "commit", "--amend", "--no-edit"], cwd=repo_root, check=True)
+        pushed_commit_hash = git_head_commit_hash(repo_root)
+        final_handoff = build_developer_handoff(
+            goal=goal,
+            task_path=task_path.relative_to(repo_root),
+            task_content=task_path.read_text(encoding="utf-8"),
+            implementation_path=implementation_path.relative_to(repo_root),
+            changed_files=sorted(changed_repo_files),
+            verification_commands=verification_commands,
+            verification_outcomes=verification_outcomes,
+            pushed_commit_hash=pushed_commit_hash,
+        )
+        write_text(handoff_path, final_handoff)
+        stage_paths(repo_root, [handoff_path])
+        if git_has_staged_changes(repo_root):
+            subprocess.run(["git", "commit", "--amend", "--no-edit"], cwd=repo_root, check=True)
+            pushed_commit_hash = git_head_commit_hash(repo_root)
+
+    git_push(repo_root)
+
+    print(f"Applied developer changes for {task_path.relative_to(repo_root)}")
+    print(f"Implementation prompt: {implementation_path.relative_to(repo_root)}")
+    print(f"Developer handoff: {handoff_path.relative_to(repo_root)}")
+    print(f"Pushed commit hash: {pushed_commit_hash}")
     return 0
 
 

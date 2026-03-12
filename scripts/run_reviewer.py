@@ -214,68 +214,38 @@ def build_suggested_improvements(
     task_text: str,
     missing_details: list[str],
     risks: list[str],
+    pushed_commit_hash: str | None,
     commit_is_inspectable: bool,
 ) -> list[str]:
     suggestions: list[str] = []
-    task_status = extract_section(task_text, "Status").lower()
 
-    if task_status != "done":
-        suggestions.append(
-            f"Complete implementation verification and move the task from `{task_status}` to `done` only after the acceptance criteria are satisfied."
-        )
-    if not commit_is_inspectable:
-        suggestions.append("Add a usable pushed commit hash to the developer handoff and ensure the commit is locally inspectable in the target repository before requesting approval-ready review.")
-    if any("stale" in item.lower() for item in risks):
-        suggestions.append("Regenerate the developer handoff and implementation prompt so they match the current task definition.")
     if missing_details:
-        suggestions.append("Fill the missing implementation details before final review to reduce ambiguity for follow-up work.")
-
+        suggestions.append("Regenerate or update the developer implementation artifact so the plan, likely files, and acceptance criteria are explicit.")
+    if extract_section(task_text, "Status").lower() != "done":
+        suggestions.append("Do not approve review until the task file is updated to `done` or explicitly `blocked` with explanation.")
+    if not pushed_commit_hash:
+        suggestions.append("Require the developer handoff to include the pushed commit hash so review can inspect a concrete repository snapshot.")
+    elif not commit_is_inspectable:
+        suggestions.append("Ask the developer to confirm the pushed commit is available in the target repository before review proceeds.")
     if not suggestions:
-        suggestions.append("The developer artifacts are reviewable as-is; proceed to final verification and completion reporting.")
+        suggestions.append("Proceed with normal code and acceptance-criteria review against the referenced pushed commit.")
 
     return suggestions
 
 
-def decide_review(
-    task_text: str,
-    missing_details: list[str],
-    risks: list[str],
-    commit_is_inspectable: bool,
-) -> str:
-    task_status = extract_section(task_text, "Status").lower()
-    if task_status != "done":
-        return "needs-changes"
-    if not commit_is_inspectable:
-        return "needs-changes"
-    if missing_details:
-        return "needs-changes"
-    if any("stale" in item.lower() for item in risks):
-        return "needs-changes"
-    return "approved"
-
-
 def build_reviewer_report(
-    goal: str,
+    *,
+    repo_root: Path,
     workspace_root: Path,
     target_name: str,
-    target_repo_root: Path,
     task_path: Path,
     task_text: str,
-    analysis_text: str,
-    handoff_text: str,
     implementation_text: str,
+    handoff_text: str,
 ) -> str:
-    review_date = dt.date.today().isoformat()
-    task_code = extract_task_code(task_path)
     pushed_commit_hash = extract_pushed_commit_hash(handoff_text)
-    commit_is_inspectable, commit_evidence_note = inspect_pushed_commit(target_repo_root, pushed_commit_hash)
-    inputs_reviewed = build_inputs_reviewed(
-        workspace_root=workspace_root,
-        target_name=target_name,
-        task_path=task_path,
-    )
-    objective = extract_section(task_text, "Objective")
-    missing_details = detect_missing_plan_details(implementation_text=implementation_text, task_text=task_text)
+    commit_is_inspectable, commit_evidence_note = inspect_pushed_commit(repo_root, pushed_commit_hash)
+    missing_details = detect_missing_plan_details(implementation_text, task_text)
     risks = analyze_risks(
         task_text=task_text,
         implementation_text=implementation_text,
@@ -288,129 +258,82 @@ def build_reviewer_report(
         task_text=task_text,
         missing_details=missing_details,
         risks=risks,
+        pushed_commit_hash=pushed_commit_hash,
         commit_is_inspectable=commit_is_inspectable,
     )
-    decision = decide_review(
-        task_text=task_text,
-        missing_details=missing_details,
-        risks=risks,
-        commit_is_inspectable=commit_is_inspectable,
+    inputs_reviewed = build_inputs_reviewed(workspace_root, target_name, task_path)
+
+    inputs_text = "\n".join(f"- `{path.relative_to(repo_root).as_posix()}`" for path in inputs_reviewed) or "- None found"
+    missing_text = "\n".join(f"- {item}" for item in missing_details) or "- None noted"
+    risks_text = "\n".join(f"- {item}" for item in risks) or "- None noted"
+    suggestions_text = "\n".join(f"- {item}" for item in suggestions) or "- None noted"
+
+    return (
+        f"# Reviewer Report\n\n"
+        f"## Date\n{dt.datetime.now(dt.timezone.utc).isoformat()}\n\n"
+        f"## Task\n- Code: {extract_task_code(task_path)}\n- File: `{task_path.relative_to(repo_root).as_posix()}`\n\n"
+        f"## Inputs Reviewed\n{inputs_text}\n\n"
+        f"## Pushed Commit Evidence\n- Recorded pushed commit hash: `{pushed_commit_hash or 'missing'}`\n"
+        f"- Inspectable in target repository: {'yes' if commit_is_inspectable else 'no'}\n"
+        f"- Evidence note: {commit_evidence_note}\n\n"
+        f"## Missing Plan Details\n{missing_text}\n\n"
+        f"## Risks\n{risks_text}\n\n"
+        f"## Suggested Improvements\n{suggestions_text}\n"
     )
-
-    inputs_text = "\n".join(f"- `{path.relative_to(workspace_root)}`" for path in inputs_reviewed) or "- None"
-    missing_text = "\n".join(f"- {item}" for item in missing_details) or "- No major detail gaps detected in the implementation artifact."
-    risks_text = "\n".join(f"- {item}" for item in risks)
-    suggestions_text = "\n".join(f"- {item}" for item in suggestions)
-    analysis_note = (
-        "- The current analysis artifact was reviewed for continuity with the selected goal."
-        if analysis_text
-        else "- No planner analysis artifact was available for this review."
-    )
-    commit_summary = pushed_commit_hash if pushed_commit_hash else "missing"
-    commit_findings_text = "\n".join(
-        [
-            f"- Reported pushed commit hash: `{commit_summary}`",
-            f"- Inspection status: {'inspectable' if commit_is_inspectable else 'not inspectable'}",
-            f"- Evidence: {commit_evidence_note}",
-        ]
-    )
-
-    return "\n".join(
-        [
-            f"# Reviewer Report — {task_code}",
-            "",
-            "## Context",
-            f"- Goal: {goal}",
-            f"- Review date: {review_date}",
-            f"- Target repository: `{target_repo_root}`",
-            f"- Task file: `{task_path.relative_to(workspace_root)}`",
-            f"- Objective: {objective or 'Not provided.'}",
-            "",
-            "## Decisions",
-            f"- Decision: `{decision}`",
-            f"- Summary: Reviewer decision is based on the selected task artifacts and pushed-commit inspection evidence.",
-            "",
-            "## Artifacts",
-            "### Inputs Reviewed",
-            inputs_text,
-            analysis_note,
-            "",
-            "### Pushed Commit Verification",
-            commit_findings_text,
-            "",
-            "### Missing Details",
-            missing_text,
-            "",
-            "### Risks",
-            risks_text,
-            "",
-            "## Open Questions / Risks",
-            risks_text,
-            "",
-            "## Recommended Next Step",
-            suggestions_text,
-            "",
-        ]
-    )
-
-
-def run_reviewer_phase(
-    goal: str | None,
-    repo_root: Path,
-    workspace_root: Path,
-    target_name: str,
-    dry_run: bool,
-    planned_task: tuple[Path, str] | None = None,
-) -> Path:
-    task_path, task_text = select_reviewer_task(
-        repo_root=repo_root,
-        goal=goal,
-        workspace_root=workspace_root,
-        target_name=target_name,
-        planned_task=planned_task,
-    )
-    task_code = extract_task_code(task_path).lower()
-    report_path = reviewer_report_path(workspace_root, target_name, task_code)
-    analysis_text = read_if_exists(analysis_path(workspace_root, target_name))
-    handoff_text = read_if_exists(developer_handoff_path(workspace_root, target_name, task_code))
-    implementation_text = read_if_exists(developer_implementation_path(workspace_root, target_name, task_code))
-    report = build_reviewer_report(
-        goal=goal or extract_section(task_text, "Objective") or task_code,
-        workspace_root=workspace_root,
-        target_name=target_name,
-        target_repo_root=repo_root,
-        task_path=task_path,
-        task_text=task_text,
-        analysis_text=analysis_text,
-        handoff_text=handoff_text,
-        implementation_text=implementation_text,
-    )
-
-    print(f"Reviewer selected task: {task_path}")
-
-    if dry_run:
-        print(f"[dry-run] Would write reviewer report: {report_path}")
-        print(report)
-        return report_path
-
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(report, encoding="utf-8")
-    print(f"Reviewer report written: {report_path}")
-    return report_path
 
 
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo).resolve()
-    workspace_root = Path(".").resolve()
+    workspace_root = repo_root / "agents"
     target_name = repo_root.name
-    run_reviewer_phase(
+
+    planner_task_dir = generated_tasks_dir(workspace_root, target_name)
+    planned_task = None
+    try:
+        planned_task_path, planned_task_content = select_developer_task(
+            repo_root=repo_root,
+            goal=args.goal,
+            workspace_root=workspace_root,
+            target_name=target_name,
+        )
+        planned_task = (planned_task_path, planned_task_content)
+    except FileNotFoundError:
+        planned_task = None
+
+    task_path, task_text = select_reviewer_task(
+        repo_root=repo_root,
         goal=args.goal,
+        workspace_root=workspace_root,
+        target_name=target_name,
+        planned_task=planned_task,
+    )
+
+    task_code = extract_task_code(task_path).lower()
+    implementation_path = developer_implementation_path(workspace_root, target_name, task_code)
+    handoff_path = developer_handoff_path(workspace_root, target_name, task_code)
+    report_path = reviewer_report_path(workspace_root, target_name, task_code)
+
+    implementation_text = read_if_exists(implementation_path)
+    handoff_text = read_if_exists(handoff_path)
+
+    report_text = build_reviewer_report(
         repo_root=repo_root,
         workspace_root=workspace_root,
         target_name=target_name,
-        dry_run=args.dry_run,
+        task_path=task_path,
+        task_text=task_text,
+        implementation_text=implementation_text,
+        handoff_text=handoff_text,
     )
+
+    if args.dry_run:
+        print(report_text.rstrip())
+        return 0
+
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(report_text, encoding="utf-8")
+    print(f"Wrote reviewer report: {report_path.relative_to(repo_root)}")
     return 0
 
 
