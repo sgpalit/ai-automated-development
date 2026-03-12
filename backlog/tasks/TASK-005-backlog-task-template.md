@@ -1,7 +1,7 @@
 # TASK-005 Backlog Task Template File
 
 ## Status
-todo
+done
 
 ## Priority
 medium
