@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import re
+import subprocess
 from pathlib import Path
 
 from run_developer import select_developer_task
@@ -16,6 +17,7 @@ from shared.artifact_paths import (
 from shared.task_utils import extract_section, extract_task_code
 
 PUSHED_COMMIT_RE = re.compile(r"Pushed commit hash:\s*`([^`]+)`")
+COMMIT_HASH_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,6 +54,47 @@ def extract_pushed_commit_hash(handoff_text: str) -> str | None:
     if not value or value == "pending":
         return None
     return value
+
+
+def inspect_pushed_commit(target_repo_root: Path, pushed_commit_hash: str | None) -> tuple[bool, str]:
+    if not pushed_commit_hash:
+        return (
+            False,
+            "Pushed-commit evidence is missing from the developer handoff; review findings cannot be grounded in an inspectable pushed task result.",
+        )
+
+    if COMMIT_HASH_RE.fullmatch(pushed_commit_hash) is None:
+        return (
+            False,
+            f"Pushed commit hash `{pushed_commit_hash}` is malformed, so the reviewer could not inspect it in the target repository.",
+        )
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{pushed_commit_hash}^{{commit}}"],
+            cwd=target_repo_root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        return (
+            False,
+            f"Pushed commit `{pushed_commit_hash}` could not be inspected in the target repository because git inspection failed: {exc}.",
+        )
+
+    if result.returncode != 0:
+        stderr = result.stderr.strip() or result.stdout.strip() or "git rev-parse returned a non-zero exit status."
+        return (
+            False,
+            f"Pushed commit `{pushed_commit_hash}` could not be inspected in the target repository: {stderr}",
+        )
+
+    resolved_hash = result.stdout.strip()
+    return (
+        True,
+        f"Review findings are grounded in inspecting pushed commit `{resolved_hash}` in the target repository rather than only the local worktree or task artifacts.",
+    )
 
 
 def build_inputs_reviewed(workspace_root: Path, target_name: str, task_path: Path) -> list[Path]:
@@ -103,10 +146,16 @@ def detect_missing_plan_details(implementation_text: str, task_text: str) -> lis
     return missing
 
 
-def analyze_risks(task_text: str, implementation_text: str, handoff_text: str) -> list[str]:
+def analyze_risks(
+    task_text: str,
+    implementation_text: str,
+    handoff_text: str,
+    pushed_commit_hash: str | None,
+    commit_is_inspectable: bool,
+    commit_evidence_note: str,
+) -> list[str]:
     risks: list[str] = []
     likely_files = section_items(implementation_text, "Exact Files Likely To Change")
-    pushed_commit_hash = extract_pushed_commit_hash(handoff_text)
 
     if not handoff_text:
         risks.append("Developer handoff is missing, so reviewer context is incomplete.")
@@ -114,6 +163,8 @@ def analyze_risks(task_text: str, implementation_text: str, handoff_text: str) -
         risks.append("Developer implementation artifact is missing, so the implementation plan cannot be fully reviewed.")
     if extract_section(task_text, "Status").lower() == "done" and not pushed_commit_hash:
         risks.append("Task is marked done, but the developer handoff does not record a pushed commit hash for review.")
+    if pushed_commit_hash and not commit_is_inspectable:
+        risks.append(commit_evidence_note)
     if any(path.endswith(".py`") or path.endswith(".py") for path in likely_files):
         risks.append("Proposed script changes could affect local runner behavior and should be checked with dry-run verification.")
     if any("docs/" in path for path in likely_files):
@@ -129,7 +180,12 @@ def analyze_risks(task_text: str, implementation_text: str, handoff_text: str) -
     return risks
 
 
-def build_suggested_improvements(task_text: str, missing_details: list[str], risks: list[str]) -> list[str]:
+def build_suggested_improvements(
+    task_text: str,
+    missing_details: list[str],
+    risks: list[str],
+    commit_is_inspectable: bool,
+) -> list[str]:
     suggestions: list[str] = []
     task_status = extract_section(task_text, "Status").lower()
 
@@ -137,6 +193,8 @@ def build_suggested_improvements(task_text: str, missing_details: list[str], ris
         suggestions.append(
             f"Complete implementation verification and move the task from `{task_status}` to `done` only after the acceptance criteria are satisfied."
         )
+    if not commit_is_inspectable:
+        suggestions.append("Add a usable pushed commit hash to the developer handoff and ensure the commit is locally inspectable in the target repository before requesting approval-ready review.")
     if any("stale" in item.lower() for item in risks):
         suggestions.append("Regenerate the developer handoff and implementation prompt so they match the current task definition.")
     if missing_details:
@@ -148,9 +206,16 @@ def build_suggested_improvements(task_text: str, missing_details: list[str], ris
     return suggestions
 
 
-def decide_review(task_text: str, missing_details: list[str], risks: list[str]) -> str:
+def decide_review(
+    task_text: str,
+    missing_details: list[str],
+    risks: list[str],
+    commit_is_inspectable: bool,
+) -> str:
     task_status = extract_section(task_text, "Status").lower()
     if task_status != "done":
+        return "needs-changes"
+    if not commit_is_inspectable:
         return "needs-changes"
     if missing_details:
         return "needs-changes"
@@ -173,6 +238,7 @@ def build_reviewer_report(
     review_date = dt.date.today().isoformat()
     task_code = extract_task_code(task_path)
     pushed_commit_hash = extract_pushed_commit_hash(handoff_text)
+    commit_is_inspectable, commit_evidence_note = inspect_pushed_commit(target_repo_root, pushed_commit_hash)
     inputs_reviewed = build_inputs_reviewed(
         workspace_root=workspace_root,
         target_name=target_name,
@@ -184,91 +250,100 @@ def build_reviewer_report(
         task_text=task_text,
         implementation_text=implementation_text,
         handoff_text=handoff_text,
+        pushed_commit_hash=pushed_commit_hash,
+        commit_is_inspectable=commit_is_inspectable,
+        commit_evidence_note=commit_evidence_note,
     )
     suggestions = build_suggested_improvements(
         task_text=task_text,
         missing_details=missing_details,
         risks=risks,
+        commit_is_inspectable=commit_is_inspectable,
     )
-    decision = decide_review(task_text=task_text, missing_details=missing_details, risks=risks)
+    decision = decide_review(
+        task_text=task_text,
+        missing_details=missing_details,
+        risks=risks,
+        commit_is_inspectable=commit_is_inspectable,
+    )
 
     inputs_text = "\n".join(f"- `{path.relative_to(workspace_root)}`" for path in inputs_reviewed) or "- None"
     missing_text = "\n".join(f"- {item}" for item in missing_details) or "- No major detail gaps detected in the implementation artifact."
     risks_text = "\n".join(f"- {item}" for item in risks)
     suggestions_text = "\n".join(f"- {item}" for item in suggestions)
     analysis_note = (
-        "- The current analysis artifact was available and supports the onboarding/documentation framing."
+        "- The current analysis artifact was reviewed for continuity with the selected goal."
         if analysis_text
-        else "- No analysis artifact was available during review."
+        else "- No planner analysis artifact was available for this review."
     )
-    notes = [
-        "Reviewer did not modify repository code.",
-        f"Current task status is `{extract_section(task_text, 'Status').lower()}`.",
-        "Re-run reviewer after implementation artifacts and task state are synchronized if developer output changes.",
-    ]
-    notes_text = "\n".join(f"- {item}" for item in notes)
-
-    return f"""# Reviewer Report
-
-## Context
-- Goal: {goal}
-- Task ID: `{task_code}`
-- Repository Path: `{target_repo_root}`
-- Review Date: {review_date}
-
-## Inputs Reviewed
-{inputs_text}
-
-## Task Summary
-- {objective}
-{analysis_note}
-
-## Implementation Plan Evaluation
-- Implementation artifact present: {"yes" if implementation_text else "no"}
-- Developer handoff present: {"yes" if handoff_text else "no"}
-- Developer pushed commit hash: {f"`{pushed_commit_hash}`" if pushed_commit_hash else "not provided"}
-{missing_text}
-
-## Risk Analysis
-{risks_text}
-
-## Suggested Improvements
-{suggestions_text}
-
-## Decision
-{decision}
-
-## Notes
-{notes_text}
-"""
-
-
-def run_reviewer_phase(
-    goal: str | None,
-    repo_root: Path,
-    workspace_root: Path,
-    target_name: str,
-    dry_run: bool,
-    planned_task: tuple[Path, str] | None = None,
-) -> Path:
-    task_path, task_text = select_developer_task(
-        repo_root=repo_root,
-        goal=goal,
-        workspace_root=workspace_root,
-        target_name=target_name,
-        planned_task=planned_task,
+    commit_summary = pushed_commit_hash if pushed_commit_hash else "missing"
+    commit_findings_text = "\n".join(
+        [
+            f"- Reported pushed commit hash: `{commit_summary}`",
+            f"- Inspection status: {'inspectable' if commit_is_inspectable else 'not inspectable'}",
+            f"- Evidence: {commit_evidence_note}",
+        ]
     )
+
+    return "\n".join(
+        [
+            f"# Reviewer Report — {task_code}",
+            "",
+            "## Context",
+            f"- Goal: {goal}",
+            f"- Review date: {review_date}",
+            f"- Target repository: `{target_repo_root}`",
+            f"- Task file: `{task_path.relative_to(workspace_root)}`",
+            f"- Objective: {objective or 'Not provided.'}",
+            "",
+            "## Decisions",
+            f"- Decision: `{decision}`",
+            f"- Summary: Reviewer decision is based on the selected task artifacts and pushed-commit inspection evidence.",
+            "",
+            "## Artifacts",
+            "### Inputs Reviewed",
+            inputs_text,
+            analysis_note,
+            "",
+            "### Pushed Commit Verification",
+            commit_findings_text,
+            "",
+            "### Missing Details",
+            missing_text,
+            "",
+            "### Risks",
+            risks_text,
+            "",
+            "## Open Questions / Risks",
+            risks_text,
+            "",
+            "## Recommended Next Step",
+            suggestions_text,
+            "",
+        ]
+    )
+
+
+def main() -> int:
+    args = parse_args()
+    target_repo_root = Path(args.repo).resolve()
+    workspace_root = Path(__file__).resolve().parent.parent
+    goal = args.goal or ""
+    selection = select_developer_task(goal=goal, repo_root=target_repo_root, workspace_root=workspace_root)
+    target_name = selection.target_name
+    task_path = selection.task_path
     task_code = extract_task_code(task_path).lower()
-    report_path = reviewer_report_path(workspace_root, target_name, task_code)
-    report_dir = report_path.parent
+
+    task_text = task_path.read_text(encoding="utf-8")
     analysis_text = read_if_exists(analysis_path(workspace_root, target_name))
     handoff_text = read_if_exists(developer_handoff_path(workspace_root, target_name, task_code))
     implementation_text = read_if_exists(developer_implementation_path(workspace_root, target_name, task_code))
+
     report = build_reviewer_report(
-        goal=goal or extract_section(task_text, "Objective") or task_code,
+        goal=goal or selection.goal,
         workspace_root=workspace_root,
         target_name=target_name,
-        target_repo_root=repo_root,
+        target_repo_root=target_repo_root,
         task_path=task_path,
         task_text=task_text,
         analysis_text=analysis_text,
@@ -276,31 +351,14 @@ def run_reviewer_phase(
         implementation_text=implementation_text,
     )
 
-    print(f"Reviewer selected task: {task_path}")
-
-    if dry_run:
-        print(f"[dry-run] Would write reviewer report: {report_path}")
+    if args.dry_run:
         print(report)
-        return report_path
+        return 0
 
-    report_dir.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(report, encoding="utf-8")
-    print(f"Reviewer report written: {report_path}")
-    return report_path
-
-
-def main() -> int:
-    args = parse_args()
-    repo_root = Path(args.repo).resolve()
-    workspace_root = Path(".").resolve()
-    target_name = repo_root.name
-    run_reviewer_phase(
-        goal=args.goal,
-        repo_root=repo_root,
-        workspace_root=workspace_root,
-        target_name=target_name,
-        dry_run=args.dry_run,
-    )
+    output_path = reviewer_report_path(workspace_root, target_name, task_code)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report, encoding="utf-8")
+    print(f"Wrote reviewer report to {output_path.relative_to(workspace_root)}")
     return 0
 
 
