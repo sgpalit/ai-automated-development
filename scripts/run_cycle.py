@@ -15,6 +15,7 @@ from run_developer import run_developer_phase
 from run_planner import PlannerPhaseResult, run_planner_phase
 from run_reviewer import run_reviewer_phase
 from run_tester import run_tester_phase
+from shared.artifact_paths import logs_dir
 from shared.target_repo_config import (
     SUPPORTED_REPOSITORY_STATES,
     resolve_target_repo_config,
@@ -199,9 +200,7 @@ def main() -> int:
             "No goal provided. Defaulting to docs/mvp.md context and the next eligible backlog task."
         )
 
-    artifact_dir = (
-        workspace_root / "artifacts" / "targets" / sanitize_target_name(target_config.name)
-    )
+    artifact_dir = logs_dir(workspace_root, target_config.name) / "continuation"
     loop_run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     if not args.auto_continue:
@@ -495,12 +494,16 @@ def extract_planner_details(planner_result: PlannerPhaseResult | None) -> dict[s
         "continue_to_implementation": planner_result.continue_to_implementation,
     }
 
+    artifact_path: Path | None = None
+    artifact_text = ""
     if task_artifact is not None:
-        details["planner_task_path"] = str(task_artifact)
-        details["planner_task_name"] = task_artifact.name
-        details["planner_task_slug"] = task_artifact.stem
+        artifact_path, artifact_text = task_artifact
+        details["planner_task_path"] = str(artifact_path)
+        details["planner_task_name"] = artifact_path.name
+        details["planner_task_slug"] = artifact_path.stem
 
-    artifact_text = read_text_if_exists(task_artifact)
+    if not artifact_text:
+        artifact_text = read_text_if_exists(artifact_path)
     if artifact_text:
         summary_line = next((line.strip() for line in artifact_text.splitlines() if line.strip()), "")
         details["planner_task_summary_line"] = summary_line
@@ -556,13 +559,6 @@ def write_continuation_artifact(
     artifact_dir.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"Wrote continuation artifact: {artifact_path}")
-
-
-def sanitize_target_name(value: str) -> str:
-    sanitized = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in value.strip())
-    return sanitized or "default"
-
-
 def read_text_if_exists(path: Path | None) -> str:
     if path is None or not path.exists() or not path.is_file():
         return ""

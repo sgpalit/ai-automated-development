@@ -33,10 +33,10 @@
 ---
 
 ## Repository Snapshot
-- File count (excluding .git): 3958
+- File count (excluding .git): 3959
 - Top-level directories: .idea, .venv, agents, config, docs, examples, prompts, scripts, shared
 - agents/backlog/tasks present: True
-- Target backlog task count: 30
+- Target backlog task count: 31
 - prompts/agents present: True
 - Target analysis artifact: agents/ai-automated-development/analysis/repo-analysis.md
 
