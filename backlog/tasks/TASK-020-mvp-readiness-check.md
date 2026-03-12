@@ -1,7 +1,7 @@
 # TASK-020 MVP Readiness Checklist and Gap Report
 
 ## Status
-todo
+done
 
 ## Priority
 high

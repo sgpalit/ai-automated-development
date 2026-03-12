@@ -1,7 +1,7 @@
 # TASK-012 Developer Agent Prompt
 
 ## Status
-todo
+done
 
 ## Priority
 high

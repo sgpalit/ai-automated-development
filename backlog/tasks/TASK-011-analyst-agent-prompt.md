@@ -1,7 +1,7 @@
 # TASK-011 Analyst Agent Prompt
 
 ## Status
-todo
+done
 
 ## Priority
 high

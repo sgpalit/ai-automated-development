@@ -1,7 +1,7 @@
 # TASK-019 Agent Artifact Templates Library
 
 ## Status
-todo
+done
 
 ## Priority
 medium

@@ -1,7 +1,7 @@
 # TASK-006 README Structure Alignment
 
 ## Status
-todo
+done
 
 ## Priority
 medium

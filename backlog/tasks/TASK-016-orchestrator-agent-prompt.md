@@ -1,7 +1,7 @@
 # TASK-016 Orchestrator Agent Prompt
 
 ## Status
-todo
+done
 
 ## Priority
 high

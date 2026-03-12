@@ -1,7 +1,7 @@
 # TASK-010 Agent Handoff Contract Specification
 
 ## Status
-todo
+done
 
 ## Priority
 high

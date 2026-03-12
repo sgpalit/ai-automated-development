@@ -1,7 +1,7 @@
 # TASK-018 Target Repository Onboarding Runbook
 
 ## Status
-todo
+done
 
 ## Priority
 high

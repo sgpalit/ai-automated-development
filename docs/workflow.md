@@ -224,3 +224,11 @@ Future versions of the system may include:
 - multi-repository coordination
 
 These are beyond the MVP scope.
+
+## Human Approval Checklists
+
+Use `docs/human-approval-checklists.md` at task-approval, implementation-acceptance, and loop-continuation gates.
+
+## Artifact Templates
+
+Use reusable role output templates in `docs/templates/` with the handoff contract in `docs/agent-handoff-contract.md`.

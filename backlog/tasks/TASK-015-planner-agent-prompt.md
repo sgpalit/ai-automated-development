@@ -1,7 +1,7 @@
 # TASK-015 Planner Agent Prompt
 
 ## Status
-todo
+done
 
 ## Priority
 high

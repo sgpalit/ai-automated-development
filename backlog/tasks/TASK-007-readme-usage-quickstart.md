@@ -1,7 +1,7 @@
 # TASK-007 README Usage Quickstart
 
 ## Status
-todo
+done
 
 ## Priority
 medium

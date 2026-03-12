@@ -216,3 +216,9 @@ The human remains responsible for:
 - defining goals
 - approving tasks
 - accepting results
+
+# Approval and Readiness References
+
+- Human approval checklists: `docs/human-approval-checklists.md`
+- Target repo onboarding runbook: `docs/target-repo-onboarding.md`
+- MVP readiness checklist: `docs/mvp-readiness-checklist.md`

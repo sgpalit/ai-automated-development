@@ -1,7 +1,7 @@
 # TASK-017 Human Approval Checklists
 
 ## Status
-todo
+done
 
 ## Priority
 medium
