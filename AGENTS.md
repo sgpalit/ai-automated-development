@@ -42,6 +42,8 @@ A usable MVP should include:
 
 Agents should prioritize tasks that help deliver this MVP.
 
+Detailed MVP requirements are defined in `docs/mvp.md`.
+
 ---
 
 ## Source of Truth
