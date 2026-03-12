@@ -2,137 +2,186 @@
 
 ## Purpose
 
-This document defines what a Minimum Viable Product (MVP) means for this repository.
+This project is an open-source framework for running multiple AI agents against a software repository in a controlled development loop.
 
-The goal of the MVP is to provide a practical, usable foundation for AI-driven software development workflows.
+The goal is to simulate a small software delivery team where different agents take different responsibilities such as analysis, planning, implementation, review, and testing.
 
-The repository should demonstrate how humans and AI agents can collaborate effectively using:
+This repository is not only a documentation project.
 
-- a local backlog
-- structured agent instructions
-- reusable prompts
-- example workflows
+Its purpose is to provide the structure, prompts, workflows, and conventions required to run semi-automated software development against a target repository.
 
 ---
 
-## Target Audience
+## Core Idea
 
-The MVP should be useful for:
+A human should be able to point the system at a target repository and use defined AI agents to:
 
-- developers experimenting with AI coding agents
-- teams building AI-assisted development workflows
-- open-source maintainers who want structured agent collaboration
-- engineers exploring semi-autonomous development loops
+- inspect the repository
+- understand its structure and conventions
+- identify useful next work
+- create or update backlog tasks
+- implement approved tasks
+- review changes
+- validate quality
+- continue in a controlled loop
+
+The human remains in control, but the agents perform most of the repetitive delivery work.
 
 ---
 
-## MVP Capabilities
+## MVP Goal
 
-The MVP should demonstrate a complete workflow including the following components.
+The MVP should prove that this repository can support a practical multi-agent development workflow against a target repository.
 
-### 1. Agent Instructions
+A successful MVP demonstrates:
 
-The repository must contain clear instructions for AI agents.
+- clear agent role definitions
+- clear responsibilities per agent
+- clear handoff format between agents
+- a repeatable workflow from analysis to implementation
+- a human review and approval loop
+- at least one end-to-end example run
 
-Examples:
+---
 
-- `AGENTS.md`
-- clear task selection rules
-- task lifecycle rules
-- reporting expectations
+## Target Workflow
 
-Agents must be able to understand how to operate inside the repository.
+The intended workflow is:
 
-### 2. Local Backlog Workflow
+1. Human selects a target repository and defines the goal
+2. Analyst agent inspects the repository
+3. Planner agent creates or updates backlog tasks
+4. Human reviews and approves the next task
+5. Developer agent implements the task
+6. Reviewer agent reviews the change
+7. Tester agent validates the result
+8. Human decides whether to accept, adjust, or continue
+9. The loop repeats
 
-The repository must include a local backlog system.
+---
 
-Example structure:
+## MVP Agent Roles
 
-    backlog/
-    backlog/tasks/
+### 1. Orchestrator
 
-Capabilities:
+Responsible for controlling the workflow.
 
-- tasks stored as markdown files
-- deterministic task selection
-- status tracking
-- dependency management
-- human review loop
+Responsibilities:
 
-### 3. Codex Usage Documentation
+- decide which agent runs next
+- enforce the defined process
+- ensure agents stay within scope
+- prevent uncontrolled autonomous behavior
 
-Developers must be able to quickly start using Codex with the repository.
+### 2. Analyst
 
-Example documentation:
+Responsible for understanding the target repository.
 
-    docs/codex-cli.md
+Responsibilities:
 
-The documentation should explain:
+- inspect repository structure
+- identify technologies and conventions
+- identify gaps, risks, and opportunities
+- summarize findings for planning
 
-- how to start Codex
-- how to run tasks
-- example prompts
-- the development loop
+### 3. Planner
 
-### 4. Prompt Library
+Responsible for turning findings into actionable work.
 
-The repository should include reusable prompts for AI agents.
+Responsibilities:
 
-Example structure:
+- generate backlog tasks
+- refine existing tasks
+- prioritize work toward the stated goal
+- keep tasks small and implementation-ready
 
-    prompts/
-      planning/
-      implementation/
-      review/
+### 4. Developer
 
-Example prompts:
+Responsible for implementing one approved task.
 
-- create backlog tasks
-- implement a task
-- review a pull request
-- analyze a repository
+Responsibilities:
 
-### 5. Contributor Guide
+- make focused code or documentation changes
+- stay within scope
+- avoid unrelated refactoring
+- report changed files and assumptions
 
-The repository must include guidance for contributors.
+### 5. Reviewer
 
-Example file:
+Responsible for reviewing the developer output.
 
-    docs/contributing.md
+Responsibilities:
 
-This should explain:
+- check scope compliance
+- check code quality
+- check maintainability and safety
+- suggest required fixes or approve the work
 
-- how humans contribute
-- how AI agents contribute
-- backlog workflow
-- review expectations
+### 6. Tester
 
-### 6. Example Workflow
+Responsible for validating the change.
 
-The repository must include at least one clear end-to-end workflow example.
+Responsibilities:
 
-Example:
+- run or define validation checks
+- verify acceptance criteria
+- report failures, risks, and gaps
+- confirm whether the task is ready
 
-1. developer asks agent to pick next task
-2. agent implements task
-3. agent proposes follow-up tasks
-4. human reviews tasks
-5. development continues
+### 7. Human Approver
 
-This example demonstrates the intended collaboration model.
+Responsible for final control.
 
-### 7. Minimal Helper Tooling
+Responsibilities:
 
-Optional helper tooling may exist if it improves the workflow.
+- approve goals
+- approve backlog direction
+- approve or reject important changes
+- decide whether the loop continues
 
-Examples:
+---
 
-- backlog inspection script
-- repository structure validator
-- development bootstrap scripts
+## MVP Deliverables
 
-Tooling should remain minimal and not introduce unnecessary complexity.
+The MVP should include at least the following:
+
+### Agent Definitions
+
+Clear documents for each agent role explaining:
+
+- purpose
+- inputs
+- outputs
+- responsibilities
+- constraints
+- handoff expectations
+
+### Workflow Definitions
+
+Clear documentation describing:
+
+- sequence of agent execution
+- decision points
+- human approval points
+- retry and correction flow
+
+### Prompt Assets
+
+Reusable prompts for each agent role, for example:
+
+- repository analysis
+- backlog generation
+- task implementation
+- code review
+- test validation
+
+### Backlog System
+
+A local backlog that agents can read and update in a deterministic way.
+
+### Example End-to-End Run
+
+At least one example showing the full loop from repository analysis to completed task.
 
 ---
 
@@ -140,39 +189,43 @@ Tooling should remain minimal and not introduce unnecessary complexity.
 
 The MVP does not need:
 
-- complex orchestration systems
-- background automation services
-- heavy frameworks
-- CI/CD pipelines
-- advanced integrations
+- complex distributed orchestration
+- autonomous background services
+- advanced infrastructure
+- full CI/CD automation
+- multi-repository coordination
+- fully automatic merge/deploy behavior
 
-The focus is on clarity and usability of the development workflow.
+The MVP should focus on a simple, controlled, practical workflow.
 
 ---
 
 ## Definition of Done
 
-The MVP is considered complete when:
+The MVP is complete when a human can:
 
-- a developer can clone the repository
-- read the documentation
-- run an AI coding agent
-- complete backlog tasks
-- extend the backlog
-- continue development using the defined workflow
+- choose a target repository
+- define a development goal
+- run the agent workflow step by step
+- receive analysis and proposed backlog tasks
+- approve one task
+- have that task implemented, reviewed, and tested
+- continue the loop with clear human control
 
-without needing additional explanation.
+without needing to redesign the workflow manually each time.
 
 ---
 
-## Long-Term Vision
+## Guiding Principle
 
-After MVP, the project may evolve to include:
+This project should behave like a small AI-assisted software company operating on a repository.
 
-- automated task runners
-- deeper agent tooling
-- CI/CD integration
-- OpenAPI-based agent tools
-- more advanced development workflows
+Different agents should have different responsibilities.
 
-These are future improvements, not MVP requirements.
+The system should optimize for:
+
+- clarity
+- control
+- repeatability
+- safe automation
+- practical software delivery
