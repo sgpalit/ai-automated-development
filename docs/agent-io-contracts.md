@@ -92,6 +92,13 @@ Each task file must contain:
 
 These tasks become the input for the Developer agent.
 
+When planner stops without continuing to implementation, the runtime-facing result should still be explicit enough for orchestration to classify the stop condition.
+
+Examples:
+
+- `no-grounded-next-task` when backlog work is exhausted and no grounded MVP slice can be derived
+- `policy-stop` when planner generated a new task and intentionally paused for review
+
 ---
 
 ## Developer Agent Output

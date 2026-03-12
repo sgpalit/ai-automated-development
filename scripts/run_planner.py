@@ -29,6 +29,8 @@ FILE_BLOCK_RE = re.compile(
 class PlannerPhaseResult:
     task_artifact: tuple[Path, str] | None
     continue_to_implementation: bool
+    stop_reason: str | None = None
+    summary: str | None = None
 
 
 @dataclass(frozen=True)
@@ -626,6 +628,8 @@ def run_planner_phase(
         return PlannerPhaseResult(
             task_artifact=(selected_path, selected_content),
             continue_to_implementation=True,
+            stop_reason=None,
+            summary=f"Selected existing task {selected_path.name} for implementation.",
         )
 
     candidate = plan_next_mvp_task(
@@ -635,7 +639,12 @@ def run_planner_phase(
     )
     if candidate is None:
         print("No grounded next task found; stopping planner cleanly.")
-        return PlannerPhaseResult(task_artifact=None, continue_to_implementation=False)
+        return PlannerPhaseResult(
+            task_artifact=None,
+            continue_to_implementation=False,
+            stop_reason="no-grounded-next-task",
+            summary="Planner could not derive a grounded next task after backlog exhaustion.",
+        )
 
     task_path = write_candidate_task(
         workspace_root=workspace_root,
@@ -650,6 +659,8 @@ def run_planner_phase(
     return PlannerPhaseResult(
         task_artifact=(task_path, content),
         continue_to_implementation=False,
+        stop_reason="policy-stop",
+        summary=f"Planner generated {task_path.name} and stopped for human review before implementation.",
     )
 
 

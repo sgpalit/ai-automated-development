@@ -38,6 +38,11 @@ Instead:
 8. If the task depends on an existing helper, config loader, dataclass, or CLI contract, use the exact names from the current source rather than inventing renamed variants.
 9. Stop and surface the generated task for human review before implementation continues.
 
+For automation-facing planner integrations:
+
+- if planner cannot derive a grounded next task, it should stop with an explicit machine-readable reason such as `no-grounded-next-task`
+- if planner generates a new task but does not continue into implementation, it should stop with an explicit review/policy reason rather than a generic silent stop
+
 If either required input is missing, unreadable, or insufficient to derive a grounded next task, stop cleanly with an operator-facing explanation.
 
 ## Task State Updates
@@ -84,6 +89,7 @@ Constraints:
 - stop reasons must be written as visible target-scoped artifacts
 - newly generated backlog tasks may still pause the loop for human review
 - reviewer and tester outputs must remain evidence-based and target-scoped
+- planner stop conditions should be explicit enough for the orchestrator to distinguish backlog exhaustion from human-review pauses
 
 ## Branch Strategy (MVP Phase)
 During MVP bootstrap, agents may commit and push directly to `main`.

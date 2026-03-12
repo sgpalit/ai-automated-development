@@ -40,6 +40,7 @@ Convert analysis and MVP goals into prioritized, implementation-ready backlog ta
   - Open Questions / Risks
   - Recommended Next Step
 - For empty-backlog MVP continuation, generate at most one grounded implementation-ready task and stop after surfacing it.
+- If planner stops without implementation, make the stop condition explicit and machine-readable, for example `no-grounded-next-task` for true backlog exhaustion or `policy-stop` for a generated-task review pause.
 
 ## Quality Bar For Generated Tasks
 

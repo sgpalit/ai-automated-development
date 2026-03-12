@@ -104,6 +104,11 @@ Rules for that empty-backlog path:
 - stop after task generation and surface the result for human review
 - if required inputs are missing or no grounded next task can be produced, stop cleanly and explain why
 
+For automation-facing planner behavior, stop reasons should be explicit enough for the orchestrator to classify them. Examples:
+
+- `no-grounded-next-task` for true backlog exhaustion
+- `policy-stop` when a new task is generated and surfaced for review
+
 The planner should reuse the existing backlog in this mode before generating a new task.
 
 ---
