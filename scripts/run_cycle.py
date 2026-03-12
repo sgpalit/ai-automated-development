@@ -16,7 +16,12 @@ from run_developer import run_developer_phase
 from run_planner import PlannerPhaseResult, run_planner_phase
 from run_reviewer import run_reviewer_phase
 from run_tester import run_tester_phase
-from shared.artifact_paths import logs_dir, tester_report_path
+from shared.artifact_paths import (
+    logs_dir,
+    stop_reason_latest_path,
+    stop_reason_timestamped_path,
+    tester_report_path,
+)
 from shared.target_repo_config import (
     SUPPORTED_REPOSITORY_STATES,
     resolve_target_repo_config,
@@ -244,351 +249,340 @@ def execute_cycle(
     return planner_result
 
 
-def parse_tester_outcome(report_content: str) -> str | None:
-    match = TESTER_OUTCOME_PATTERN.search(report_content)
-    if not match:
-        return None
-    return match.group(1)
-
-
-def read_tester_outcome(
-    *,
-    workspace_root: Path,
-    target_name: str,
-    planner_result: PlannerPhaseResult | None,
-) -> tuple[str | None, Path | None]:
-    if planner_result is None or planner_result.task_artifact is None:
-        return None, None
-
-    task_path, _task_content = planner_result.task_artifact
-    task_code = extract_task_code(task_path).lower()
-    report_path = tester_report_path(workspace_root, target_name, task_code)
-    if not report_path.exists():
-        return None, report_path
-
-    report_content = report_path.read_text(encoding="utf-8")
-    return parse_tester_outcome(report_content), report_path
-
-
-def determine_continuation_decision(
+def determine_continuation(
     *,
     args: argparse.Namespace,
     repository_state: str,
-    phase_adjusted: bool,
     planner_result: PlannerPhaseResult | None,
-    requested_phase: str,
-    effective_phase: str,
     workspace_root: Path,
     target_name: str,
 ) -> ContinuationDecision:
+    if not args.auto_continue:
+        return ContinuationDecision(
+            continue_running=False,
+            reason="single-cycle-requested",
+            summary="Auto-continue disabled; stopping after a single cycle.",
+            details={},
+        )
+
     if repository_state != "MVP":
         return ContinuationDecision(
             continue_running=False,
             reason="repository-state-not-mvp",
             summary=(
-                "Stopped auto-continuation because the target repository state is "
-                f"{repository_state}, not MVP."
+                "Auto-continue only runs repeatedly for MVP target repositories; "
+                f"stopping for state {repository_state}."
             ),
             details={"repository_state": repository_state},
         )
 
-    if phase_adjusted and requested_phase != effective_phase:
+    if planner_result is not None and not planner_result.continue_to_implementation:
+        planner_stop_reason = getattr(planner_result, "stop_reason", None)
+        planner_summary = getattr(planner_result, "summary", None)
+        if planner_stop_reason == "no-grounded-next-task":
+            return ContinuationDecision(
+                continue_running=False,
+                reason="planner-stopped-no-grounded-next-task",
+                summary=planner_summary
+                or "Planner could not derive a grounded next task after backlog exhaustion.",
+                details={
+                    "planner_stop_reason": planner_stop_reason,
+                    "task_artifact": str(planner_result.task_artifact)
+                    if planner_result.task_artifact
+                    else None,
+                },
+            )
+        if planner_stop_reason == "policy-stop":
+            return ContinuationDecision(
+                continue_running=False,
+                reason="planner-stopped-policy",
+                summary=planner_summary or "Planner reported a policy stop.",
+                details={
+                    "planner_stop_reason": planner_stop_reason,
+                    "task_artifact": str(planner_result.task_artifact)
+                    if planner_result.task_artifact
+                    else None,
+                },
+            )
         return ContinuationDecision(
             continue_running=False,
-            reason="phase-policy-adjusted",
-            summary=(
-                "Stopped auto-continuation because repository state policy adjusted "
-                f"the requested phase from {requested_phase} to {effective_phase}."
-            ),
+            reason="planner-stopped-other",
+            summary=planner_summary or "Planner stopped before implementation.",
             details={
-                "requested_phase": requested_phase,
-                "effective_phase": effective_phase,
+                "planner_stop_reason": planner_stop_reason,
+                "task_artifact": str(planner_result.task_artifact)
+                if planner_result.task_artifact
+                else None,
             },
         )
 
-    if effective_phase not in AUTO_CONTINUE_PHASES:
+    if args.phase != "tester":
         return ContinuationDecision(
             continue_running=False,
-            reason="planner-stopped-policy",
+            reason="single-cycle-requested",
             summary=(
-                "Stopped auto-continuation because the effective phase "
-                f"{effective_phase!r} is not eligible for repeated cycles."
+                "Auto-continue requested, but the selected phase does not include tester; "
+                "stopping after one cycle."
             ),
-            details={"effective_phase": effective_phase},
+            details={"phase": args.phase},
         )
 
-    if planner_result is None:
+    task_code = (
+        extract_task_code(planner_result.task_artifact)
+        if planner_result and planner_result.task_artifact
+        else None
+    )
+    if not task_code:
         return ContinuationDecision(
             continue_running=False,
-            reason="planner-stopped-other",
-            summary="Stopped auto-continuation because planner output was unavailable.",
+            reason="tester-outcome-missing",
+            summary="Unable to infer task code from planner output for tester continuation.",
             details={},
         )
 
-    if planner_result.task_artifact is None:
+    report_path = tester_report_path(workspace_root, target_name, task_code)
+    if not report_path.exists():
         return ContinuationDecision(
             continue_running=False,
-            reason="planner-stopped-no-grounded-next-task",
-            summary=(
-                "Stopped auto-continuation because the planner did not select a grounded "
-                "next task from the backlog."
-            ),
-            details={},
+            reason="tester-outcome-missing",
+            summary=f"Tester report not found at {report_path}.",
+            details={"report_path": str(report_path)},
         )
 
-    if not planner_result.continue_to_implementation:
+    report_text = report_path.read_text(encoding="utf-8")
+    match = TESTER_OUTCOME_PATTERN.search(report_text)
+    if not match:
         return ContinuationDecision(
             continue_running=False,
-            reason="planner-stopped-other",
-            summary=(
-                "Stopped auto-continuation because the planner produced a task artifact "
-                "but did not continue to implementation."
-            ),
-            details={"planner_task": str(planner_result.task_artifact[0])},
+            reason="tester-outcome-unrecognized",
+            summary=f"Tester report at {report_path} did not contain an Outcome line.",
+            details={"report_path": str(report_path)},
         )
 
-    if effective_phase == "tester":
-        tester_outcome, report_path = read_tester_outcome(
-            workspace_root=workspace_root,
-            target_name=target_name,
-            planner_result=planner_result,
+    outcome = match.group(1)
+    if outcome == "READY":
+        return ContinuationDecision(
+            continue_running=True,
+            reason="tester-outcome-ready",
+            summary="Tester reported READY; continuing to the next cycle.",
+            details={"report_path": str(report_path)},
         )
-        if tester_outcome is None:
-            reason = "tester-outcome-missing" if report_path and not report_path.exists() else "tester-outcome-unrecognized"
-            summary = (
-                "Stopped auto-continuation because no deterministic tester outcome was available."
-                if reason == "tester-outcome-missing"
-                else "Stopped auto-continuation because the tester report did not contain a recognized deterministic outcome."
-            )
-            return ContinuationDecision(
-                continue_running=False,
-                reason=reason,
-                summary=summary,
-                details={"tester_report": str(report_path) if report_path else None},
-            )
 
-        if tester_outcome != "READY":
-            lowered = tester_outcome.lower()
-            return ContinuationDecision(
-                continue_running=False,
-                reason=f"tester-outcome-{lowered}",
-                summary=(
-                    "Stopped auto-continuation because the tester result was "
-                    f"{tester_outcome}, not READY."
-                ),
-                details={
-                    "tester_outcome": tester_outcome,
-                    "tester_report": str(report_path) if report_path else None,
-                },
-            )
+    if outcome == "RETRY":
+        return ContinuationDecision(
+            continue_running=False,
+            reason="tester-outcome-retry",
+            summary="Tester reported RETRY; stopping auto-continue for manual follow-up.",
+            details={"report_path": str(report_path)},
+        )
+
+    if outcome == "BLOCKED":
+        return ContinuationDecision(
+            continue_running=False,
+            reason="tester-outcome-blocked",
+            summary="Tester reported BLOCKED; stopping auto-continue for manual follow-up.",
+            details={"report_path": str(report_path)},
+        )
 
     return ContinuationDecision(
-        continue_running=True,
-        reason="continue",
-        summary="Continuing to the next cycle because planner selected a grounded task.",
-        details={"effective_phase": effective_phase},
+        continue_running=False,
+        reason="tester-outcome-unrecognized",
+        summary=f"Tester outcome {outcome} is not recognized for continuation.",
+        details={"report_path": str(report_path), "outcome": outcome},
     )
 
 
-def write_continuation_artifact(
+def write_continuation_log(
     *,
-    artifact_dir: Path,
-    run_id: str,
-    cycle_number: int,
+    workspace_root: Path,
+    target_name: str,
+    cycle_count: int,
     repository_state: str,
-    requested_phase: str,
-    effective_phase: str,
+    phase: str,
     decision: ContinuationDecision,
-    planner_result: PlannerPhaseResult | None,
     dry_run: bool,
 ) -> Path:
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path = artifact_dir / f"{run_id}-cycle-{cycle_number:02d}.json"
+    timestamp = datetime.now(timezone.utc)
+    timestamp_slug = timestamp.strftime("%Y%m%dT%H%M%SZ")
+    log_directory = logs_dir(workspace_root, target_name) / "continuation"
+    log_path = log_directory / f"{timestamp_slug}-cycle-{cycle_count:02d}.json"
     payload = {
-        "run_id": run_id,
-        "cycle_number": cycle_number,
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "timestamp": timestamp.isoformat(),
+        "target_name": target_name,
         "repository_state": repository_state,
-        "requested_phase": requested_phase,
-        "effective_phase": effective_phase,
-        "decision": {
-            "continue_running": decision.continue_running,
-            "reason": decision.reason,
-            "summary": decision.summary,
-            "details": decision.details,
-        },
-        "planner": None
-        if planner_result is None
-        else {
-            "continue_to_implementation": planner_result.continue_to_implementation,
-            "task_artifact": None
-            if planner_result.task_artifact is None
-            else str(planner_result.task_artifact[0]),
-        },
+        "phase": phase,
+        "cycle_count": cycle_count,
+        "continue_running": decision.continue_running,
+        "reason": decision.reason,
+        "summary": decision.summary,
+        "details": decision.details,
     }
+    if dry_run:
+        print(f"[dry-run] Would write continuation log: {log_path}")
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return log_path
+
+    log_directory.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"Wrote continuation log: {log_path}")
+    return log_path
+
+
+def write_stop_reason_artifact(
+    *,
+    workspace_root: Path,
+    target_name: str,
+    repository_state: str,
+    phase: str,
+    cycle_count: int,
+    decision: ContinuationDecision,
+    dry_run: bool,
+) -> tuple[Path, Path]:
+    timestamp = datetime.now(timezone.utc)
+    timestamp_iso = timestamp.isoformat()
+    timestamp_slug = timestamp.strftime("%Y%m%dT%H%M%SZ")
+    reason_slug = re.sub(r"[^a-z0-9-]+", "-", decision.reason.lower()).strip("-") or "stop"
+    latest_path = stop_reason_latest_path(workspace_root, target_name)
+    timestamped_path = stop_reason_timestamped_path(
+        workspace_root,
+        target_name,
+        timestamp_slug,
+        reason_slug,
+    )
+
+    content_lines = [
+        f"# Stop Reason Artifact: {decision.reason}",
+        "",
+        "## Context",
+        f"- Target: `{target_name}`",
+        f"- Repository State: `{repository_state}`",
+        f"- Phase: `{phase}`",
+        f"- Cycle Count: `{cycle_count}`",
+        f"- Timestamp: `{timestamp_iso}`",
+        "",
+        "## Decision",
+        f"- Reason: `{decision.reason}`",
+        f"- Summary: {decision.summary}",
+        "",
+        "## Details",
+    ]
+
+    if decision.details:
+        for key, value in sorted(decision.details.items()):
+            content_lines.append(f"- {key}: `{value}`")
+    else:
+        content_lines.append("- None")
+
+    content = "\n".join(content_lines) + "\n"
 
     if dry_run:
-        print(f"[dry-run] Would write continuation artifact: {artifact_path}")
-        print(json.dumps(payload, indent=2, sort_keys=True))
-        return artifact_path
+        print(f"[dry-run] Would write stop reason artifact: {timestamped_path}")
+        print(f"[dry-run] Would update latest stop reason artifact: {latest_path}")
+        return timestamped_path, latest_path
 
-    artifact_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"Wrote continuation artifact: {artifact_path}")
-    return artifact_path
+    timestamped_path.parent.mkdir(parents=True, exist_ok=True)
+    timestamped_path.write_text(content, encoding="utf-8")
+    latest_path.write_text(content, encoding="utf-8")
+    print(f"Wrote stop reason artifact: {timestamped_path}")
+    print(f"Updated latest stop reason artifact: {latest_path}")
+    return timestamped_path, latest_path
 
 
 def main() -> int:
     args = parse_args()
-    if args.max_cycles < 1:
-        raise ValueError("--max-cycles must be at least 1.")
-
-    workspace_root = Path(".").resolve()
-    target_config = resolve_target_repo_config(
-        workspace_root,
-        cli_repo=args.repo,
-        cli_state=args.target_repository_state,
-        config_name=args.target_config,
+    workspace_root = Path(__file__).resolve().parents[1]
+    config = resolve_target_repo_config(
+        workspace_root=workspace_root,
+        target_config_arg=args.target_config,
+        repo_override=args.repo,
+        repository_state_override=args.target_repository_state,
     )
-    repo_root = target_config.path
-    repository_state = target_config.repository_state
-    requested_phase = args.phase
-    phase_adjusted = apply_repository_state_rules(args, repository_state)
 
+    args.repo = str(config.repo_path)
+    if args.target_repository_state is None:
+        args.target_repository_state = config.repository_state
+    target_name = config.name
+    repo_root = config.repo_path.resolve()
     analyst_goal = args.goal or DEFAULT_AUTOMATION_GOAL
 
-    if target_config.source_path is not None:
-        print(
-            f"Target repository config: {target_config.name} "
-            f"({target_config.source_path.relative_to(workspace_root)})"
-        )
-    else:
-        print("Target repository config: ad-hoc CLI/default settings")
-    print(f"Target repository path: {repo_root}")
-    print(f"Target repository state: {repository_state}")
+    print(f"Target config: {config.config_path}")
+    print(f"Target name: {target_name}")
+    print(f"Target repository: {repo_root}")
+    print(f"Target repository state: {config.repository_state}")
 
-    if not args.goal:
-        print(
-            "No goal provided. Defaulting to docs/mvp.md context and the next eligible backlog task."
-        )
+    phase_adjusted = apply_repository_state_rules(args, config.repository_state)
 
-    artifact_dir = logs_dir(workspace_root, target_config.name) / "continuation"
-    loop_run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if phase_adjusted:
+        print("Phase policy adjusted for target repository state; continuing with updated phase.")
 
-    if not args.auto_continue:
+    cycle_limit = max(1, args.max_cycles)
+    cycle_count = 0
+
+    while True:
+        cycle_count += 1
+        print(f"=== Cycle {cycle_count}/{cycle_limit} ===")
         planner_result = execute_cycle(
             args=args,
             analyst_goal=analyst_goal,
             repo_root=repo_root,
             workspace_root=workspace_root,
-            target_name=target_config.name,
+            target_name=target_name,
         )
-        write_continuation_artifact(
-            artifact_dir=artifact_dir,
-            run_id=loop_run_id,
-            cycle_number=1,
-            repository_state=repository_state,
-            requested_phase=requested_phase,
-            effective_phase=args.phase,
-            decision=ContinuationDecision(
-                continue_running=False,
-                reason="single-cycle-requested",
-                summary="Stopped after a single cycle because --auto-continue was not requested.",
-                details={},
-            ),
-            planner_result=planner_result,
-            dry_run=args.dry_run,
-        )
-        return 0
 
-    if repository_state != "MVP":
-        planner_result = execute_cycle(
+        decision = determine_continuation(
             args=args,
-            analyst_goal=analyst_goal,
-            repo_root=repo_root,
-            workspace_root=workspace_root,
-            target_name=target_config.name,
-        )
-        decision = determine_continuation_decision(
-            args=args,
-            repository_state=repository_state,
-            phase_adjusted=phase_adjusted,
+            repository_state=config.repository_state,
             planner_result=planner_result,
-            requested_phase=requested_phase,
-            effective_phase=args.phase,
             workspace_root=workspace_root,
-            target_name=target_config.name,
+            target_name=target_name,
         )
-        write_continuation_artifact(
-            artifact_dir=artifact_dir,
-            run_id=loop_run_id,
-            cycle_number=1,
-            repository_state=repository_state,
-            requested_phase=requested_phase,
-            effective_phase=args.phase,
+
+        write_continuation_log(
+            workspace_root=workspace_root,
+            target_name=target_name,
+            cycle_count=cycle_count,
+            repository_state=config.repository_state,
+            phase=args.phase,
             decision=decision,
-            planner_result=planner_result,
-            dry_run=args.dry_run,
-        )
-        return 0
-
-    cycle_number = 0
-    while cycle_number < args.max_cycles:
-        cycle_number += 1
-        print(f"=== Auto-continue cycle {cycle_number} / {args.max_cycles} ===")
-        planner_result = execute_cycle(
-            args=args,
-            analyst_goal=analyst_goal,
-            repo_root=repo_root,
-            workspace_root=workspace_root,
-            target_name=target_config.name,
-        )
-        decision = determine_continuation_decision(
-            args=args,
-            repository_state=repository_state,
-            phase_adjusted=phase_adjusted,
-            planner_result=planner_result,
-            requested_phase=requested_phase,
-            effective_phase=args.phase,
-            workspace_root=workspace_root,
-            target_name=target_config.name,
-        )
-        write_continuation_artifact(
-            artifact_dir=artifact_dir,
-            run_id=loop_run_id,
-            cycle_number=cycle_number,
-            repository_state=repository_state,
-            requested_phase=requested_phase,
-            effective_phase=args.phase,
-            decision=decision,
-            planner_result=planner_result,
             dry_run=args.dry_run,
         )
 
-        print(f"Auto-continue decision: {decision.summary}")
+        if decision.reason == "planner-stopped-no-grounded-next-task":
+            write_stop_reason_artifact(
+                workspace_root=workspace_root,
+                target_name=target_name,
+                repository_state=config.repository_state,
+                phase=args.phase,
+                cycle_count=cycle_count,
+                decision=decision,
+                dry_run=args.dry_run,
+            )
+
         if not decision.continue_running:
-            return 0
+            print(f"Stopping auto-continue: {decision.reason}")
+            print(decision.summary)
+            break
 
-    final_decision = ContinuationDecision(
-        continue_running=False,
-        reason="max-cycles-reached",
-        summary=(
-            "Stopped auto-continuation because the configured maximum number "
-            f"of cycles ({args.max_cycles}) was reached."
-        ),
-        details={"max_cycles": args.max_cycles},
-    )
-    write_continuation_artifact(
-        artifact_dir=artifact_dir,
-        run_id=loop_run_id,
-        cycle_number=cycle_number,
-        repository_state=repository_state,
-        requested_phase=requested_phase,
-        effective_phase=args.phase,
-        decision=final_decision,
-        planner_result=None,
-        dry_run=args.dry_run,
-    )
-    print(f"Auto-continue decision: {final_decision.summary}")
+        if cycle_count >= cycle_limit:
+            limit_decision = ContinuationDecision(
+                continue_running=False,
+                reason="max-cycles-reached",
+                summary=f"Reached max cycle limit ({cycle_limit}); stopping auto-continue.",
+                details={"max_cycles": cycle_limit},
+            )
+            write_continuation_log(
+                workspace_root=workspace_root,
+                target_name=target_name,
+                cycle_count=cycle_count,
+                repository_state=config.repository_state,
+                phase=args.phase,
+                decision=limit_decision,
+                dry_run=args.dry_run,
+            )
+            print(f"Stopping auto-continue: {limit_decision.reason}")
+            print(limit_decision.summary)
+            break
+
     return 0
 
 

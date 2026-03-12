@@ -39,3 +39,20 @@ def tester_report_path(workspace_root: Path, target_name: str, task_code: str) -
 
 def logs_dir(workspace_root: Path, target_name: str) -> Path:
     return target_artifacts_root(workspace_root, target_name) / "logs"
+
+
+def stop_reasons_dir(workspace_root: Path, target_name: str) -> Path:
+    return target_artifacts_root(workspace_root, target_name) / "orchestrator" / "stop-reasons"
+
+
+def stop_reason_latest_path(workspace_root: Path, target_name: str) -> Path:
+    return stop_reasons_dir(workspace_root, target_name) / "latest.md"
+
+
+def stop_reason_timestamped_path(
+    workspace_root: Path,
+    target_name: str,
+    timestamp_slug: str,
+    reason_slug: str,
+) -> Path:
+    return stop_reasons_dir(workspace_root, target_name) / f"{timestamp_slug}-{reason_slug}.md"
