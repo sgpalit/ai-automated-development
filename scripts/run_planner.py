@@ -10,6 +10,7 @@ from pathlib import Path
 from shared.artifact_paths import analysis_path, generated_tasks_dir
 from shared.task_utils import (
     TASK_FILE_RE,
+    extract_section,
     find_task_by_marker,
     load_task_records,
     next_task_number,
@@ -164,9 +165,9 @@ def slug_task_statuses(workspace_root: Path, target_name: str, slug: str) -> lis
 
 def existing_objectives(workspace_root: Path, target_name: str) -> set[str]:
     return {
-        record.objective.strip().lower()
+        extract_section(record.content, "Objective").strip().lower()
         for record in load_task_records(workspace_root, target_name)
-        if record.objective.strip()
+        if extract_section(record.content, "Objective").strip()
     }
 
 
@@ -512,20 +513,22 @@ def write_candidate_task(
 
 
 def run_planner_phase(
-    goal: str,
+    goal: str | None,
     target_repo_root: Path,
     workspace_root: Path,
     target_name: str,
     dry_run: bool,
 ) -> PlannerPhaseResult:
-    tasks_dir = generated_tasks_dir(workspace_root, target_name)
-    existing_tasks = load_task_records(workspace_root, target_name)
-    selected = select_next_task(existing_tasks)
+    try:
+        selected_path, selected_content = select_next_task(workspace_root, target_name)
+    except FileNotFoundError:
+        selected_path = None
+        selected_content = None
 
-    if selected is not None:
-        print(f"Selected existing task: {selected.path}")
+    if selected_path is not None and selected_content is not None:
+        print(f"Selected existing task: {selected_path}")
         return PlannerPhaseResult(
-            task_artifact=(selected.path, selected.path.read_text(encoding="utf-8")),
+            task_artifact=(selected_path, selected_content),
             continue_to_implementation=True,
         )
 
@@ -550,7 +553,7 @@ def run_planner_phase(
     )
     return PlannerPhaseResult(
         task_artifact=(task_path, content),
-        continue_to_implementation=True,
+        continue_to_implementation=False,
     )
 
 

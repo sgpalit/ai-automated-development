@@ -164,7 +164,7 @@ def main() -> int:
         nonlocal planner_result
         planner_result = run_planner_phase(
             goal=args.goal,
-            repo_root=repo_root,
+            target_repo_root=repo_root,
             workspace_root=workspace_root,
             target_name=target_config.name,
             dry_run=args.dry_run,
