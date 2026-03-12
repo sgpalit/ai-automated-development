@@ -203,5 +203,30 @@ cython_debug/
 
 # Marimo
 marimo/_static/
+
+# Environment variables
+.env
+.env.*
+
+# Secrets
+.secrets/
+*.key
+*.pem
+
+# Local config
+config.local.*
+settings.local.*
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# OS
+.DS_Store
+Thumbs.db
 marimo/_lsp/
 __marimo__/
