@@ -1,27 +1,58 @@
-## Follow-up Task Creation
+# Agent Workflow
 
-After completing a task, the agent should propose and add new backlog tasks when useful.
+This document defines the detailed, repo-native workflow for AI agents working in this repository.
 
-Rules:
+## 1) Select the Next Task (Deterministic Rule)
 
-- Add only **small, concrete, implementation-ready** follow-up tasks
-- Do not create vague or oversized tasks
-- Use the next sequential task number
-- Set initial status to `todo`
-- Include priority, scope, out of scope, acceptance criteria, and dependencies
-- Prefer tasks that logically follow from the work just completed
+When choosing a task from `backlog/tasks/`, use this exact order:
 
-The agent must not start the newly created tasks automatically unless explicitly instructed.
+1. Keep only tasks with `Status: todo`.
+2. From those, keep the highest priority first (`high` > `medium` > `low`).
+3. From that set, keep only tasks whose dependencies are all `done`.
+4. If multiple tasks still qualify, pick the lowest task number.
 
-## Human Review Loop
+Example tie-break:
 
-Workflow:
+- `TASK-003` and `TASK-004` are both `todo`, `high`, and unblocked.
+- Pick `TASK-003` because it has the lower number.
 
-1. Agent picks the next approved `todo` task
-2. Agent implements the task
-3. Agent marks it as `done` if completed
-4. Agent proposes one or more follow-up tasks if relevant
-5. Human reviews and edits the newly proposed backlog tasks
-6. Agent waits for the next explicit instruction before continuing
+## 2) Mark Task State in Backlog
 
-This repository uses a human-reviewed iterative workflow.
+Before making code changes:
+
+1. Open the selected task file.
+2. Change `## Status` to `in-progress`.
+
+After implementation and validation are complete:
+
+1. Change `## Status` to `done`.
+2. Keep the rest of the task content intact unless a small clarification is required.
+
+## 3) Implementation Rules
+
+- Keep changes small and focused on the current task.
+- Do not introduce unrelated refactors.
+- Prefer simple, maintainable solutions.
+- Keep the repository in a working state.
+
+## 4) Reporting Format (Required)
+
+At task completion, report:
+
+- Summary of changes
+- List of modified files
+- Assumptions made
+- Possible follow-up tasks
+
+## 5) Branch Strategy (MVP Phase)
+
+During MVP bootstrap, agents may commit and push directly to `main`.
+
+Constraints:
+
+- Only implement the current backlog task.
+- Keep changes small and focused.
+- Do not perform unrelated refactoring.
+- Ensure the repository remains usable after changes.
+
+After MVP, workflow will move to feature branches + pull requests + review.

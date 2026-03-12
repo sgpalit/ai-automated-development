@@ -1,7 +1,7 @@
 # TASK-002 Agent Workflow Definition
 
 ## Status
-todo
+done
 
 ## Priority
 high
