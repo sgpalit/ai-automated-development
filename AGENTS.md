@@ -70,6 +70,38 @@ When asked to pick the next task, agents must:
 
 Agents must implement only one task at a time.
 
+## Default Runner Behavior
+
+If the local runner is started without a human goal prompt, agents must not invent a new free-text goal.
+
+In that mode, use `docs/mvp.md` as the default project context and select the next eligible backlog task automatically.
+
+Selection order:
+
+1. Scan `agents/backlog/tasks/` first, then `backlog/tasks/` if present
+2. Prefer tasks with status `todo`
+3. If no `todo` task is eligible, resume the next eligible task with status `in-progress`
+4. Prefer higher priority tasks first
+5. Ensure dependencies are `done`
+6. If multiple tasks qualify, select the lowest `TASK-###` number
+
+If no eligible task exists, the planner should try to generate exactly one new implementation-ready backlog task from:
+
+- `docs/mvp.md`
+- `agents/analysis/repo-analysis.md`
+
+Rules for that empty-backlog path:
+
+- create only one new task
+- use the next sequential `TASK-###` number in `agents/backlog/tasks/`
+- keep the task small and implementation-ready
+- include `Status`, `Priority`, `Objective`, `Scope`, `Out of Scope`, `Acceptance Criteria`, and `Dependencies`
+- ground the task in the next missing MVP slice supported by the latest repository analysis
+- stop after task generation and surface the result for human review
+- if required inputs are missing or no grounded next task can be produced, stop cleanly and explain why
+
+The planner should reuse the existing backlog in this mode before generating a new task.
+
 ---
 
 ## Task State Updates
@@ -101,6 +133,10 @@ Agents must follow these principles:
 
 Each task should ideally result in one pull request or one small commit set.
 
+For the current MVP workflow, the developer agent must finish verification, create a focused commit for the completed task, push that commit, and hand off the pushed commit hash for review.
+
+Reviewers must evaluate the developer's pushed commit, not an uncommitted local working tree.
+
 ---
 
 ## Reporting Format
@@ -111,6 +147,7 @@ When completing a task, agents should report:
 - files changed
 - assumptions made
 - suggested follow-up tasks
+- pushed commit hash for reviewer reference
 
 ---
 
@@ -144,10 +181,14 @@ Development follows a human-supervised workflow:
 
 1. Agent picks a backlog task
 2. Agent implements the task
-3. Agent marks the task as `done`
-4. Agent proposes follow-up tasks
-5. Human reviews backlog
-6. Human instructs the agent to continue
+3. Agent verifies the changes, commits them, and pushes the commit
+4. Agent marks the task as `done`
+5. Agent reports the pushed commit hash and proposes follow-up tasks
+6. Human/reviewer checks that pushed commit
+7. Human reviews backlog
+8. Human instructs the agent to continue
+
+If a new task is generated because the backlog is exhausted, the loop pauses at that point until a human reviews the generated task.
 
 Agents must never continue automatically without instruction.
 
@@ -164,6 +205,7 @@ Rules:
 - keep commits small
 - maintain a working state
 - avoid unrelated changes
+- push the completed task commit before reviewer handoff
 
 After MVP, the workflow may switch to:
 
@@ -201,4 +243,4 @@ Agents must not create new backlog tasks until all existing `todo` tasks are com
 
 The goal of the current backlog is to reach the first working MVP of the multi-agent development workflow.
 
-New tasks may only be created after the backlog is cleared or when explicitly instructed by a human.
+New tasks may only be created after the backlog is cleared, when the planner is explicitly handling the empty-backlog MVP continuation path, or when explicitly instructed by a human.

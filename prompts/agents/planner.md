@@ -8,7 +8,7 @@ Convert analysis and MVP goals into prioritized, implementation-ready backlog ta
 
 ## Required Inputs
 
-- `analysis/repo-analysis.md` (or latest analysis)
+- `agents/analysis/repo-analysis.md` (or latest analysis)
 - `docs/mvp.md`
 - `AGENTS.md`
 - `backlog/tasks/TASK-TEMPLATE.md`

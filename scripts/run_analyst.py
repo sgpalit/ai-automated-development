@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import argparse
+import datetime as dt
 import os
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-from llm import run_prompt
+from shared.artifact_paths import analysis_path, generated_tasks_dir
 
 MAX_FILES = 120
 MAX_FILE_CHARS = 5000
@@ -18,6 +18,28 @@ SKIP_DIRS = {
     "node_modules",
     "__pycache__",
 }
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run the analyst phase against this repository."
+    )
+    parser.add_argument(
+        "goal",
+        nargs="?",
+        help="Human goal for the local file-based analyst phase.",
+    )
+    parser.add_argument(
+        "--repo",
+        default=".",
+        help="Target repository path. Defaults to current repository.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the analyst output without writing files.",
+    )
+    return parser.parse_args()
 
 
 def build_repo_snapshot(repo_path: Path) -> str:
@@ -51,12 +73,124 @@ def build_repo_snapshot(repo_path: Path) -> str:
     return "\n".join(lines)
 
 
-def main() -> None:
-    load_dotenv()
+def collect_repo_snapshot(repo_root: Path) -> dict[str, object]:
+    files = [path for path in repo_root.rglob("*") if path.is_file() and ".git" not in path.parts]
+    top_level_dirs = sorted(
+        [path.name for path in repo_root.iterdir() if path.is_dir() and path.name != ".git"]
+    )
 
-    repo_path = Path(os.getenv("TARGET_REPO_PATH", ".")).resolve()
+    def read_if_exists(path: str) -> str:
+        candidate = repo_root / path
+        return candidate.read_text(encoding="utf-8") if candidate.exists() else ""
+
+    readme = read_if_exists("README.md")
+    mvp = read_if_exists("docs/mvp.md")
+    onboarding = read_if_exists("docs/target-repo-onboarding.md")
+    context = read_if_exists("docs/target-repo-context.md")
+
+    return {
+        "file_count": len(files),
+        "top_level_dirs": top_level_dirs,
+        "has_backlog": generated_tasks_dir(repo_root).exists(),
+        "has_prompts": (repo_root / "prompts/agents").exists(),
+        "readme_preview": "\n".join(readme.splitlines()[:12]),
+        "mvp_preview": "\n".join(mvp.splitlines()[:12]),
+        "onboarding_preview": "\n".join(onboarding.splitlines()[:12]),
+        "context_preview": "\n".join(context.splitlines()[:12]),
+    }
+
+
+def build_analysis_markdown(goal: str, repo_root: Path) -> str:
+    snapshot = collect_repo_snapshot(repo_root)
+    today = dt.date.today().isoformat()
+
+    return f"""## Context
+- Goal: {goal}
+- Current step: Repository analysis
+- Date: {today}
+- Inputs reviewed:
+  - README.md
+  - docs/mvp.md
+  - docs/agent-handoff-contract.md
+  - docs/target-repo-onboarding.md
+  - docs/target-repo-context.md
+  - Repository structure under {repo_root.resolve()}
+
+## Decisions
+- The analysis follows the onboarding and repository-context guidance so planning is grounded in explicit repository evidence.
+- A local CLI should keep outputs file-based to preserve human review and easy iteration.
+- Analyst output should be regenerated each run to keep planning grounded in current state.
+
+## Artifacts
+- agents/analysis/repo-analysis.md: This analysis snapshot.
+- Repository snapshot summary: file count, top-level directories, and documentation previews supporting onboarding intake.
+
+## Open Questions / Risks
+- Future phases (developer/reviewer/tester) still need integration points and output contracts.
+- Planner output quality is heuristic in this thin-slice and should be reviewed by a human.
+- If repository docs are sparse, analyst findings may require human validation before planning.
+
+## Recommended Next Step
+- Next agent: Planner
+- Instruction: Convert analysis into small, dependency-safe backlog tasks informed by the onboarding checklist and repository-context evidence.
+
+---
+
+## Repository Snapshot
+- File count (excluding .git): {snapshot['file_count']}
+- Top-level directories: {", ".join(snapshot['top_level_dirs'])}
+- agents/backlog/tasks present: {snapshot['has_backlog']}
+- prompts/agents present: {snapshot['has_prompts']}
+
+## Analysis Expectations
+Use the repository snapshot and reviewed docs to capture:
+- repository purpose and expected users
+- technology stack and tooling
+- structure and architecture clues
+- conventions and quality signals
+- risks, gaps, and small-slice improvement opportunities
+
+### README.md (preview)
+```
+{snapshot['readme_preview']}
+```
+
+### docs/mvp.md (preview)
+```
+{snapshot['mvp_preview']}
+```
+
+### docs/target-repo-onboarding.md (preview)
+```
+{snapshot['onboarding_preview']}
+```
+
+### docs/target-repo-context.md (preview)
+```
+{snapshot['context_preview']}
+```
+"""
+
+
+def run_analyst_phase(goal: str, repo_root: Path, dry_run: bool) -> Path:
+    output_path = analysis_path(repo_root)
+    content = build_analysis_markdown(goal=goal, repo_root=repo_root)
+
+    if dry_run:
+        print(f"[dry-run] Would write analyst output: {output_path}")
+        print(content)
+        return output_path
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(content, encoding="utf-8")
+    print(f"Analyst output written: {output_path}")
+    return output_path
+
+
+def run_llm_analyst(repo_path: Path) -> Path:
+    from llm import run_prompt
+
     prompt_path = repo_path / "prompts" / "agents" / "analyst.md"
-
     analyst_prompt = prompt_path.read_text(encoding="utf-8")
     repo_snapshot = build_repo_snapshot(repo_path)
 
@@ -64,16 +198,29 @@ def main() -> None:
         f"{analyst_prompt}\n\n"
         "Repository context (truncated for token limits):\n"
         f"{repo_snapshot}\n\n"
-        "Write the final analysis content for analysis/repo-analysis.md."
+        "Write the final analysis content for agents/analysis/repo-analysis.md."
     )
 
     output = run_prompt(full_prompt)
 
-    analysis_dir = repo_path / "analysis"
-    analysis_dir.mkdir(parents=True, exist_ok=True)
-    output_path = analysis_dir / "repo-analysis.md"
+    output_path = analysis_path(repo_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(output, encoding="utf-8")
+    return output_path
 
+
+def main() -> None:
+    args = parse_args()
+    if args.goal:
+        repo_path = Path(args.repo).resolve()
+        run_analyst_phase(goal=args.goal, repo_root=repo_path, dry_run=args.dry_run)
+        return
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    repo_path = Path(os.getenv("TARGET_REPO_PATH", ".")).resolve()
+    output_path = run_llm_analyst(repo_path)
     print(f"Wrote {output_path}")
 
 

@@ -85,6 +85,7 @@ It should define:
 - how the agent avoids unrelated cleanup
 - how the agent proposes follow-up tasks
 - how the agent closes a task
+- what happens when the backlog is temporarily exhausted during promptless MVP runs
 
 ### 4. Codex CLI bootstrap
 

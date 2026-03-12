@@ -63,7 +63,7 @@ Responsibilities:
 
 Output file:
 
-    analysis/repo-analysis.md
+    agents/analysis/repo-analysis.md
 
 This file contains the structured analysis of the repository.
 
@@ -80,7 +80,7 @@ The planner then generates or updates backlog tasks.
 
 Output location:
 
-    backlog/tasks/TASK-XXX-*.md
+    agents/backlog/tasks/TASK-XXX-*.md
 
 Tasks must be:
 
@@ -89,6 +89,15 @@ Tasks must be:
 - implementation-ready
 
 The planner must focus on work that moves the project toward the MVP.
+
+If the existing backlog has no eligible `todo` or `in-progress` task, the planner should attempt to generate exactly one new implementation-ready backlog task from:
+
+- `docs/mvp.md`
+- `agents/analysis/repo-analysis.md`
+
+That generated task must be surfaced for human review before implementation continues.
+
+If required planning inputs are missing or no grounded next MVP slice can be identified, the workflow must stop cleanly with a clear operator-facing explanation instead of crashing.
 
 ### 4. Human Review
 
@@ -102,6 +111,8 @@ The human may:
 - reject tasks
 
 Only approved tasks may be implemented.
+
+When the planner generates a new task because the backlog is exhausted, that generated task must also be reviewed before implementation starts.
 
 ### 5. Task Implementation (Developer)
 
@@ -179,6 +190,8 @@ After a task is completed and accepted, the workflow repeats:
 4. Reviewer reviews the change
 5. Tester validates the result
 
+If the backlog is exhausted before the MVP is complete, the planner should create one grounded next MVP task for human review and then stop.
+
 This loop continues until the goal or MVP is reached.
 
 ---
@@ -204,6 +217,7 @@ Humans remain responsible for:
 - defining goals
 - approving backlog direction
 - approving significant changes
+- approving planner-generated tasks created when the backlog is empty
 
 ### Clear Agent Responsibilities
 

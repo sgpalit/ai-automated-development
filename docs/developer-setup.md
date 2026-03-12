@@ -64,20 +64,26 @@ Variable reference:
 
 The simplest entry point is:
 
+- `./run-agents.sh`
 - `./run-agents.sh "Your goal here"`
 
 Other available scripts:
 
 - `python3 scripts/run_analyst.py`
 - `python3 scripts/run_planner.py`
-- `python3 scripts/run_cycle.py "Your goal here" --phase planner`
+- `python3 scripts/run_developer.py`
+- `python3 scripts/run_developer.py --execute`
+- `python3 scripts/run_cycle.py --phase planner`
 
 What they do:
 
-- `run-agents.sh` forwards arguments to `scripts/run_cycle.py`
-- `run_analyst.py` reads `prompts/agents/analyst.md` and writes `analysis/repo-analysis.md`
-- `run_planner.py` reads `analysis/repo-analysis.md` and writes one or more backlog tasks
-- `run_cycle.py` is a thin-slice local runner for the analyst and planner phases
+- `run-agents.sh` defaults to `scripts/run_cycle.py --phase developer --execute` and forwards any extra arguments
+- `run_analyst.py` reads `prompts/agents/analyst.md` and writes `agents/analysis/repo-analysis.md`
+- `run_planner.py` reads `agents/analysis/repo-analysis.md` and writes one or more backlog tasks
+- `run_developer.py` writes a developer handoff and an implementation prompt artifact for the selected task, and can optionally apply repo changes with `--execute`
+- `run_cycle.py` is a thin-slice local runner for the analyst, planner, and developer phases
+
+If no goal is provided to `run-agents.sh`, `run_cycle.py`, or `run_developer.py`, the runner uses `docs/mvp.md` as context and selects the next eligible backlog task automatically.
 
 ---
 
@@ -90,7 +96,7 @@ python3 scripts/run_analyst.py
 Output:
 
 ```text
-analysis/repo-analysis.md
+agents/analysis/repo-analysis.md
 ```
 
 This script uses the OpenAI API.
@@ -106,25 +112,28 @@ python3 scripts/run_planner.py
 Output:
 
 ```text
-backlog/tasks/TASK-###-short-description.md
+agents/backlog/tasks/TASK-###-short-description.md
 ```
 
-The planner expects `analysis/repo-analysis.md` to already exist.
+The planner expects `agents/analysis/repo-analysis.md` to already exist.
 
 ---
 
 # 7. Run the Thin-Slice Local CLI
 
-Use this when you want a simple end-to-end analyst + planner pass from one command:
+Use this when you want a simple end-to-end analyst + planner + developer execution pass from one command:
 
 ```bash
+./run-agents.sh
 ./run-agents.sh "Improve onboarding documentation"
 ```
 
 Useful options:
 
 ```bash
+./run-agents.sh --phase developer --execute
 ./run-agents.sh "Improve onboarding documentation" --phase analyst
+./run-agents.sh "Improve onboarding documentation" --phase developer --execute
 ./run-agents.sh "Improve onboarding documentation" --dry-run
 ./run-agents.sh "Improve onboarding documentation" --repo /path/to/target-repo
 ```
@@ -132,8 +141,12 @@ Useful options:
 Notes:
 
 - `--phase analyst` runs only the analyst phase
-- default behavior runs analyst and planner
+- `--phase developer` runs analyst, planner, and developer
+- `run-agents.sh` defaults to developer execution
+- without a goal prompt, the runner reuses the backlog and selects the next eligible task automatically
 - `--dry-run` prints outputs without writing files
+- the developer phase writes a handoff and an implementation prompt under `agents/implementation/developer/`
+- `run-agents.sh` already includes `--execute`; use the Python entry points directly if you want artifact-only behavior
 
 ---
 
@@ -200,9 +213,9 @@ pip install -r requirements.txt
 
 1. Configure `.env`
 2. Run `python3 scripts/run_analyst.py`
-3. Review `analysis/repo-analysis.md`
+3. Review `agents/analysis/repo-analysis.md`
 4. Run `python3 scripts/run_planner.py`
-5. Review the generated files in `backlog/tasks/`
+5. Review the generated files in `agents/backlog/tasks/`
 6. Continue with the human-supervised implementation workflow
 
 ---

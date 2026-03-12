@@ -230,3 +230,6 @@ temp/
 Thumbs.db
 marimo/_lsp/
 __marimo__/
+
+# Agent logs
+agents/logs/

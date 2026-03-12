@@ -42,7 +42,7 @@ The Analyst agent writes repository analysis results.
 
 Output file:
 
-    analysis/repo-analysis.md
+    agents/analysis/repo-analysis.md
 
 Contents should include:
 
@@ -114,7 +114,7 @@ Output location:
 
 Example file:
 
-    reviews/review-TASK-###.md
+    agents/review/reviewer/task-###-review.md
 
 The review must include:
 
@@ -137,7 +137,7 @@ Output location:
 
 Example file:
 
-    validation/test-TASK-###.md
+    agents/test/task-###-test.md
 
 The validation report must include:
 
@@ -172,19 +172,19 @@ Agents should follow these naming rules.
 
 Analysis:
 
-    analysis/repo-analysis.md
+    agents/analysis/repo-analysis.md
 
 Backlog tasks:
 
-    backlog/tasks/TASK-###-description.md
+    agents/backlog/tasks/TASK-###-description.md
 
 Reviews:
 
-    reviews/review-TASK-###.md
+    agents/review/reviewer/task-###-review.md
 
 Validation:
 
-    validation/test-TASK-###.md
+    agents/test/task-###-test.md
 
 ---
 

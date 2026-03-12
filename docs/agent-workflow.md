@@ -16,6 +16,27 @@ Example tie-break:
 - `TASK-003` and `TASK-004` are both `todo`, `high`, and unblocked.
 - Select `TASK-003` because it has the lower number.
 
+## Empty Backlog Rule
+If a promptless local run finds no eligible `todo` or `in-progress` task, do not crash and do not invent an unrelated free-text goal.
+
+Instead:
+
+1. Read `docs/mvp.md`.
+2. Read `agents/analysis/repo-analysis.md`.
+3. Generate exactly one new implementation-ready backlog task in `agents/backlog/tasks/` using the next sequential `TASK-###` number.
+4. Include at least:
+   - `Status`
+   - `Priority`
+   - `Objective`
+   - `Scope`
+   - `Out of Scope`
+   - `Acceptance Criteria`
+   - `Dependencies`
+5. Keep the task small and grounded in the next missing MVP slice described by the MVP and repository analysis.
+6. Stop and surface the generated task for human review before implementation continues.
+
+If either required input is missing, unreadable, or insufficient to derive a grounded next task, stop cleanly with an operator-facing explanation.
+
 ## Task State Updates
 Before implementation:
 
@@ -46,6 +67,8 @@ If implementation reveals additional work, create follow-up tasks in `backlog/ta
 
 ## Human Review Loop
 Keep work review-friendly for humans by limiting scope to the current task, preserving repository usability, and providing clear completion reporting.
+
+Tasks generated because the backlog is empty are proposals only until a human reviews them.
 
 ## Branch Strategy (MVP Phase)
 During MVP bootstrap, agents may commit and push directly to `main`.

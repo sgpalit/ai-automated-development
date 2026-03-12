@@ -6,7 +6,7 @@ Use these checklists at explicit workflow gates.
 
 Required evidence:
 - Repository analysis summary
-- Candidate task file in `backlog/tasks/`
+- Candidate task file in `agents/backlog/tasks/`
 
 Checklist:
 - [ ] Objective is clear and MVP-relevant
@@ -19,12 +19,15 @@ Checklist:
 
 Required evidence:
 - Developer summary
+- Developer commit hash and confirmation that it was pushed
 - Reviewer result (`APPROVED` / `CHANGES REQUIRED`)
 - Tester result (`PASSED` / `FAILED`)
 
 Checklist:
 - [ ] Implementation stayed within approved scope
 - [ ] Acceptance criteria are demonstrably met
+- [ ] Developer provided the pushed commit reference for the completed task
+- [ ] Reviewer checked the developer's pushed commit, not an uncommitted working tree
 - [ ] Reviewer result is `APPROVED`
 - [ ] Tester result is `PASSED`
 - [ ] Risks/open questions are acceptable or tracked

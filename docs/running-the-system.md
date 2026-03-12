@@ -33,7 +33,7 @@ Before running the system, ensure the repository contains:
 - workflow definition (`docs/workflow.md`)
 - MVP definition (`docs/mvp.md`)
 - agent prompts (`prompts/agents/`)
-- backlog system (`backlog/tasks/`)
+- generated backlog artifacts (`agents/backlog/tasks/`)
 
 Create these directories if they do not exist:
 
@@ -44,7 +44,12 @@ Create these directories if they do not exist:
 ---
 
 
-## Thin-Slice CLI (Analyst + Planner)
+## Thin-Slice CLI (Analyst + Planner + Developer)
+
+The `run-agents.sh` wrapper now defaults to a full local run through developer execution:
+
+    ./run-agents.sh
+    ./run-agents.sh "Your goal here"
 
 Install dependencies:
 
@@ -69,7 +74,7 @@ Run the Analyst phase:
 
 This creates:
 
-    analysis/repo-analysis.md
+    agents/analysis/repo-analysis.md
 
 Run the Planner phase:
 
@@ -77,9 +82,32 @@ Run the Planner phase:
 
 This creates one or more backlog task files in:
 
-    backlog/tasks/TASK-###-short-description.md
+    agents/backlog/tasks/TASK-###-short-description.md
 
-These scripts are intentionally minimal so additional agent runners can be added later (`run_developer.py`, `run_reviewer.py`, `run_tester.py`).
+Run the Developer artifact phase:
+
+    python3 scripts/run_developer.py
+    python3 scripts/run_developer.py "Your goal here"
+
+This creates:
+
+    agents/handoff/developer/task-###-developer-handoff.md
+    agents/implementation/developer/task-###-implementation.md
+
+Run the Developer execution mode:
+
+    python3 scripts/run_developer.py --execute
+    python3 scripts/run_developer.py "Your goal here" --execute
+
+This writes the same developer artifacts and then applies repository file changes returned by the local OpenAI prompt utility.
+
+Without `--execute`, `run_developer.py` prepares developer artifacts only.
+
+When no goal is provided, the local runner uses `docs/mvp.md` as default context and selects the next eligible backlog task automatically.
+
+These scripts are intentionally minimal and file-based. Reviewer and tester runners can be added later (`run_reviewer.py`, `run_tester.py`).
+
+Use the Python entry points directly when you want a non-executing planner or developer-artifact pass.
 
 ---
 
@@ -113,7 +141,7 @@ Prompt the agent with:
 
 Expected output:
 
-    analysis/repo-analysis.md
+    agents/analysis/repo-analysis.md
 
 ---
 
@@ -123,13 +151,13 @@ The Planner agent converts analysis into backlog tasks.
 
 Prompt the agent with:
 
-    Read docs/mvp.md, docs/agents.md, prompts/agents/planner.md, and analysis/repo-analysis.md.
+    Read docs/mvp.md, docs/agents.md, prompts/agents/planner.md, and agents/analysis/repo-analysis.md.
 
     Review the repository and generate backlog tasks that move the project toward the MVP.
 
 Expected output:
 
-    backlog/tasks/TASK-XXX-*.md
+    agents/backlog/tasks/TASK-XXX-*.md
 
 The human reviews these tasks before implementation begins.
 
@@ -149,7 +177,7 @@ Typical rule:
 
 # Step 5 — Run the Developer Agent
 
-The Developer agent implements the selected task.
+The Developer agent works from the selected task and developer artifacts.
 
 Prompt example:
 
@@ -157,7 +185,19 @@ Prompt example:
 
     Implement the task and produce the implementation summary.
 
-Outputs:
+Current local runner outputs:
+
+- `agents/handoff/developer/task-XXX-developer-handoff.md`
+- `agents/implementation/developer/task-XXX-implementation.md`
+
+Execution mode:
+
+- run `python3 scripts/run_developer.py --execute`
+- or run `python3 scripts/run_developer.py "Your goal here" --execute`
+- the selected task is moved to `in-progress`
+- repository file changes returned by the local OpenAI prompt utility are applied locally
+
+Developer execution outputs, when a coding agent actually performs the task:
 
 - repository changes
 - summary of work
@@ -177,7 +217,7 @@ Prompt example:
 
 Output file:
 
-    reviews/review-TASK-XXX.md
+    agents/review/reviewer/task-XXX-review.md
 
 Possible outcomes:
 
@@ -200,7 +240,7 @@ Prompt example:
 
 Output file:
 
-    validation/test-TASK-XXX.md
+    agents/test/task-XXX-test.md
 
 Possible outcomes:
 

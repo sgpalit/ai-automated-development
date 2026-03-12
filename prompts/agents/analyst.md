@@ -29,7 +29,7 @@ Produce a repository analysis that helps the Planner create high-quality backlog
 
 ## Required Output
 
-Write analysis to `analysis/repo-analysis.md` and format the response with the handoff contract sections:
+Write analysis to `agents/analysis/repo-analysis.md` and format the response with the handoff contract sections:
 
 - Context
 - Decisions
@@ -50,7 +50,7 @@ Write analysis to `analysis/repo-analysis.md` and format the response with the h
 - <finding> — <why it matters>
 
 ## Artifacts
-- analysis/repo-analysis.md: Structured repository analysis for planning.
+- agents/analysis/repo-analysis.md: Structured repository analysis for planning.
 
 ## Open Questions / Risks
 - <unknown or risk>

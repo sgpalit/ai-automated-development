@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""Thin-slice local CLI for the first multi-agent workflow phases.
-
-Current phases:
-1. analyst
-2. planner
-
-The script intentionally keeps all logic local and file-based so that later
-phases (developer/reviewer/tester) can be added without changing the CLI shape.
-"""
+"""Thin orchestrator for the local multi-agent workflow phases."""
 
 from __future__ import annotations
 
 import argparse
-import datetime as dt
-import re
+import os
 from pathlib import Path
 from typing import Callable
 
+from run_analyst import run_analyst_phase
+from run_developer import run_developer_phase
+from run_planner import PlannerPhaseResult, run_planner_phase
+from run_reviewer import run_reviewer_phase
+from run_tester import run_tester_phase
+
 PHASE_ORDER = ["analyst", "planner", "developer", "reviewer", "tester"]
+DEFAULT_AUTOMATION_GOAL = (
+    "Advance the next missing MVP item from docs/mvp.md using the next eligible backlog task."
+)
+SUPPORTED_REPOSITORY_STATES = ("MVP", "MVP_DONE", "TEST", "PROD")
+DEFAULT_REPOSITORY_STATE = "MVP"
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,13 +28,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "goal",
-        help="Human goal for this cycle (used by analyst and planner outputs).",
+        nargs="?",
+        help=(
+            "Human goal for this cycle. If omitted, the runner uses docs/mvp.md as "
+            "context and selects the next eligible backlog task automatically."
+        ),
     )
     parser.add_argument(
         "--phase",
-        choices=["analyst", "planner"],
+        choices=["analyst", "planner", "developer", "reviewer", "tester"],
         default="planner",
-        help="Last phase to run. analyst runs analyst only; planner runs analyst+planner.",
+        help=(
+            "Last phase to run. analyst runs analyst only; planner runs analyst+planner; "
+            "developer runs analyst+planner+developer; "
+            "reviewer runs analyst+planner+developer+reviewer; "
+            "tester runs analyst+planner+developer+reviewer+tester."
+        ),
     )
     parser.add_argument(
         "--repo",
@@ -40,203 +51,142 @@ def parse_args() -> argparse.Namespace:
         help="Target repository path. Defaults to current repository.",
     )
     parser.add_argument(
+        "--target-repository-state",
+        choices=SUPPORTED_REPOSITORY_STATES,
+        default=None,
+        help=(
+            "Explicit target repository state for this run. Overrides the "
+            "TARGET_REPOSITORY_STATE environment variable."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print outputs without writing files.",
     )
+    parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="When the developer phase runs, use the local execution mode to apply repository changes.",
+    )
     return parser.parse_args()
 
 
-def run_phase(phase: str, handlers: dict[str, Callable[[], None]]) -> None:
-    handler = handlers.get(phase)
-    if handler is None:
-        raise ValueError(f"Phase '{phase}' is not implemented yet.")
-    handler()
+def resolve_repository_state(cli_value: str | None) -> str:
+    raw_state = cli_value or os.getenv(
+        "TARGET_REPOSITORY_STATE", DEFAULT_REPOSITORY_STATE
+    )
+    state = raw_state.strip().upper()
+    if state not in SUPPORTED_REPOSITORY_STATES:
+        supported = ", ".join(SUPPORTED_REPOSITORY_STATES)
+        raise ValueError(
+            f"Unsupported target repository state '{raw_state}'. "
+            f"Expected one of: {supported}."
+        )
+    return state
 
 
-def collect_repo_snapshot(repo_root: Path) -> dict[str, object]:
-    files = [p for p in repo_root.rglob("*") if p.is_file() and ".git" not in p.parts]
-    top_level_dirs = sorted([p.name for p in repo_root.iterdir() if p.is_dir() and p.name != ".git"])
+def apply_repository_state_rules(args: argparse.Namespace, state: str) -> None:
+    if state == "PROD" and args.execute:
+        raise ValueError(
+            "Execution mode is disabled for PROD target repository state. "
+            "Re-run without --execute."
+        )
 
-    def read_if_exists(path: str) -> str:
-        candidate = repo_root / path
-        return candidate.read_text(encoding="utf-8") if candidate.exists() else ""
+    if state == "MVP" and args.phase == "tester":
+        print(
+            "Repository state MVP limits the local runner to reviewer phase while "
+            "MVP delivery is still in progress. Adjusting --phase tester to reviewer."
+        )
+        args.phase = "reviewer"
 
-    readme = read_if_exists("README.md")
-    mvp = read_if_exists("docs/mvp.md")
+    if state == "MVP_DONE" and args.phase in {"reviewer", "tester"}:
+        print(
+            "Repository state MVP_DONE limits the local runner to developer phase "
+            "until explicit TEST validation is requested. Adjusting the target phase "
+            f"from {args.phase} to developer."
+        )
+        args.phase = "developer"
 
-    return {
-        "file_count": len(files),
-        "top_level_dirs": top_level_dirs,
-        "has_backlog": (repo_root / "backlog/tasks").exists(),
-        "has_prompts": (repo_root / "prompts/agents").exists(),
-        "readme_preview": "\n".join(readme.splitlines()[:12]),
-        "mvp_preview": "\n".join(mvp.splitlines()[:12]),
-    }
+    if state == "TEST" and args.phase == "analyst":
+        print(
+            "Repository state TEST selected. Analyst-only runs are allowed, "
+            "but downstream dry-run verification is recommended."
+        )
 
+    if state == "PROD" and args.phase in {"developer", "reviewer", "tester"}:
+        print(
+            "Repository state PROD limits the local runner to planner phase to avoid "
+            "implementation or validation changes against a production target. "
+            f"Adjusting the target phase from {args.phase} to planner."
+        )
+        args.phase = "planner"
 
-def build_analysis_markdown(goal: str, repo_root: Path) -> str:
-    snapshot = collect_repo_snapshot(repo_root)
-    today = dt.date.today().isoformat()
-
-    return f"""## Context
-- Goal: {goal}
-- Current step: Repository analysis
-- Date: {today}
-- Inputs reviewed:
-  - README.md
-  - docs/mvp.md
-  - docs/agent-handoff-contract.md
-  - Repository structure under {repo_root.resolve()}
-
-## Decisions
-- The repository is already structured for AI-assisted development and is suitable for a thin-slice runnable loop.
-- A local CLI should keep outputs file-based to preserve human review and easy iteration.
-- Analyst output should be regenerated each run to keep planning grounded in current state.
-
-## Artifacts
-- analysis/repo-analysis.md: This analysis snapshot.
-
-## Open Questions / Risks
-- Future phases (developer/reviewer/tester) still need integration points and output contracts.
-- Planner output quality is heuristic in this thin-slice and should be reviewed by a human.
-
-## Recommended Next Step
-- Next agent: Planner
-- Instruction: Convert analysis into small, dependency-safe backlog tasks.
-
----
-
-## Repository Snapshot
-- File count (excluding .git): {snapshot['file_count']}
-- Top-level directories: {", ".join(snapshot['top_level_dirs'])}
-- backlog/tasks present: {snapshot['has_backlog']}
-- prompts/agents present: {snapshot['has_prompts']}
-
-### README.md (preview)
-```
-{snapshot['readme_preview']}
-```
-
-### docs/mvp.md (preview)
-```
-{snapshot['mvp_preview']}
-```
-"""
-
-
-def next_task_number(task_dir: Path) -> int:
-    max_id = 0
-    for path in task_dir.glob("TASK-*.md"):
-        match = re.match(r"TASK-(\d{3})-", path.name)
-        if match:
-            max_id = max(max_id, int(match.group(1)))
-    return max_id + 1
-
-
-def slugify(value: str, max_words: int = 6) -> str:
-    words = re.sub(r"[^a-zA-Z0-9\s-]", "", value.lower()).split()
-    trimmed = words[:max_words] if words else ["planned-work"]
-    return "-".join(trimmed)
-
-
-def build_task_markdown(task_id: int, goal: str) -> str:
-    task_code = f"TASK-{task_id:03d}"
-    slug = slugify(goal)
-
-    return f"""# {task_code} Planner Follow-up: {goal}
-
-## Status
-todo
-
-## Priority
-high
-
-## Objective
-Translate the latest analyst findings into concrete implementation work aligned with this goal: {goal}
-
-## Scope
-- Use `analysis/repo-analysis.md` as the planning input
-- Define one focused implementation slice that can be completed in a single cycle
-- Keep task boundaries explicit and implementation-ready
-
-## Out of Scope
-- Implementing the task itself
-- Introducing unrelated refactors
-
-## Acceptance Criteria
-- Backlog task is specific and executable
-- Acceptance criteria are testable
-- Dependencies are explicitly listed
-
-## Dependencies
-- None
-
-## Notes
-Generated by `scripts/run_cycle.py` (planner phase).
-Slug: `{slug}`
-"""
-
-
-def upsert_planner_task(repo_root: Path, goal: str, dry_run: bool) -> Path:
-    task_dir = repo_root / "backlog" / "tasks"
-    task_dir.mkdir(parents=True, exist_ok=True)
-
-    marker = f"Planner Follow-up: {goal}"
-    existing = None
-    for path in sorted(task_dir.glob("TASK-*.md")):
-        if marker in path.read_text(encoding="utf-8"):
-            existing = path
-            break
-
-    if existing is None:
-        task_id = next_task_number(task_dir)
-        filename = f"TASK-{task_id:03d}-{slugify(goal)}.md"
-        target = task_dir / filename
-    else:
-        task_id_match = re.match(r"TASK-(\d{3})-", existing.name)
-        task_id = int(task_id_match.group(1)) if task_id_match else next_task_number(task_dir)
-        target = existing
-
-    content = build_task_markdown(task_id=task_id, goal=goal)
-
-    if dry_run:
-        print(f"[dry-run] Would write planner task: {target}")
-        print(content)
-    else:
-        target.write_text(content, encoding="utf-8")
-
-    return target
+    if state == "MVP_DONE" and not args.goal:
+        print(
+            "Repository state MVP_DONE indicates MVP delivery is complete. "
+            "Default automation goal remains available for follow-on backlog work."
+        )
 
 
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo).resolve()
+    repository_state = resolve_repository_state(args.target_repository_state)
+    apply_repository_state_rules(args, repository_state)
 
-    analysis_path = repo_root / "analysis" / "repo-analysis.md"
+    planner_result: PlannerPhaseResult | None = None
+    analyst_goal = args.goal or DEFAULT_AUTOMATION_GOAL
+
+    print(f"Target repository state: {repository_state}")
+
+    if not args.goal:
+        print(
+            "No goal provided. Defaulting to docs/mvp.md context and the next eligible backlog task."
+        )
 
     def analyst_handler() -> None:
-        content = build_analysis_markdown(goal=args.goal, repo_root=repo_root)
-        if args.dry_run:
-            print(f"[dry-run] Would write analyst output: {analysis_path}")
-            print(content)
-            return
-
-        analysis_path.parent.mkdir(parents=True, exist_ok=True)
-        analysis_path.write_text(content, encoding="utf-8")
-        print(f"Analyst output written: {analysis_path}")
+        run_analyst_phase(goal=analyst_goal, repo_root=repo_root, dry_run=args.dry_run)
 
     def planner_handler() -> None:
-        if not analysis_path.exists() and not args.dry_run:
-            raise FileNotFoundError(
-                "Planner phase requires analysis/repo-analysis.md. Run analyst first."
-            )
-        task_path = upsert_planner_task(repo_root=repo_root, goal=args.goal, dry_run=args.dry_run)
-        print(f"Planner task ready: {task_path}")
+        nonlocal planner_result
+        planner_result = run_planner_phase(
+            goal=args.goal,
+            repo_root=repo_root,
+            dry_run=args.dry_run,
+        )
+
+    def developer_handler() -> None:
+        run_developer_phase(
+            goal=args.goal,
+            repo_root=repo_root,
+            dry_run=args.dry_run,
+            execute=args.execute,
+            planned_task=planner_result.task_artifact if planner_result else None,
+        )
+
+    def reviewer_handler() -> None:
+        run_reviewer_phase(
+            goal=args.goal,
+            repo_root=repo_root,
+            dry_run=args.dry_run,
+            planned_task=planner_result.task_artifact if planner_result else None,
+        )
+
+    def tester_handler() -> None:
+        run_tester_phase(
+            goal=args.goal,
+            repo_root=repo_root,
+            dry_run=args.dry_run,
+            planned_task=planner_result.task_artifact if planner_result else None,
+        )
 
     handlers: dict[str, Callable[[], None]] = {
         "analyst": analyst_handler,
         "planner": planner_handler,
+        "developer": developer_handler,
+        "reviewer": reviewer_handler,
+        "tester": tester_handler,
     }
 
     stop_idx = PHASE_ORDER.index(args.phase)
@@ -244,10 +194,23 @@ def main() -> int:
         if phase in handlers:
             print(f"Running phase: {phase}")
             run_phase(phase, handlers)
+            if (
+                phase == "planner"
+                and planner_result is not None
+                and not planner_result.continue_to_implementation
+            ):
+                break
         else:
             print(f"Skipping unimplemented phase: {phase}")
 
     return 0
+
+
+def run_phase(phase: str, handlers: dict[str, Callable[[], None]]) -> None:
+    handler = handlers.get(phase)
+    if handler is None:
+        raise ValueError(f"Phase '{phase}' is not implemented yet.")
+    handler()
 
 
 if __name__ == "__main__":

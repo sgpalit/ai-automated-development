@@ -2,18 +2,10 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_PYTHON="$SCRIPT_DIR/.venv/bin/python3"
 
-if [ "$#" -eq 0 ]; then
-  cat <<'EOF'
-Usage:
-  ./run-agents.sh "Your goal here" [--phase analyst|planner] [--repo PATH] [--dry-run]
-
-Examples:
-  ./run-agents.sh "Improve onboarding documentation"
-  ./run-agents.sh "Improve onboarding documentation" --phase analyst
-  ./run-agents.sh "Improve onboarding documentation" --dry-run
-EOF
-  exit 1
+if [ -x "$PROJECT_PYTHON" ]; then
+  exec "$PROJECT_PYTHON" "$SCRIPT_DIR/scripts/run_cycle.py" --phase developer --execute "$@"
 fi
 
-exec python3 "$SCRIPT_DIR/scripts/run_cycle.py" "$@"
+exec python3 "$SCRIPT_DIR/scripts/run_cycle.py" --phase developer --execute "$@"

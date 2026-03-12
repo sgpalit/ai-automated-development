@@ -35,9 +35,11 @@ Reusable role-specific output templates are available in `docs/templates/`.
 ### Developer
 - Implements one approved task at a time
 - Keeps changes focused and updates task status flow
+- Verifies changes, creates a focused task commit, pushes it, and includes the pushed commit hash in handoff artifacts
 
 ### Reviewer
 - Verifies scope compliance and quality risks
+- Reviews the exact pushed commit identified by the developer, not an uncommitted working tree
 - Returns clear decision: `APPROVED` or `CHANGES REQUIRED`
 
 ### Tester

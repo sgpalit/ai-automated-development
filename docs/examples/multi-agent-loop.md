@@ -12,14 +12,14 @@ Analyst → Planner → Human review → Developer → Reviewer → Tester → H
 ## Step 1: Analyst
 
 - Prompt file: `prompts/agents/analyst.md`
-- Output artifact: `analysis/repo-analysis.md`
+- Output artifact: `agents/analysis/repo-analysis.md`
 - Contract sections used: Context, Decisions, Artifacts, Open Questions / Risks, Recommended Next Step
 
 ## Step 2: Planner
 
 - Prompt file: `prompts/agents/planner.md`
 - Inputs: analysis + `docs/mvp.md` + existing backlog
-- Output artifacts: `backlog/tasks/TASK-XXX-*.md`
+- Output artifacts: `agents/backlog/tasks/TASK-XXX-*.md`
 
 ## Step 3: Human review gate
 
@@ -51,8 +51,8 @@ If accepted:
 
 ## Expected Artifact Set for One Cycle
 
-- `analysis/repo-analysis.md` (latest analysis)
-- `backlog/tasks/TASK-XXX-*.md` (selected task)
+- `agents/analysis/repo-analysis.md` (latest analysis)
+- `agents/backlog/tasks/TASK-XXX-*.md` (selected task)
 - Developer handoff summary (contract format)
 - Reviewer decision artifact
 - Tester decision artifact
