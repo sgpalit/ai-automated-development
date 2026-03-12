@@ -1,123 +1,192 @@
-# Agent Instructions
+# AGENTS.md
 
-This repository is designed to be worked on by both humans and AI coding agents.
+## Purpose
+
+This repository is designed to be developed collaboratively by humans and AI coding agents.
+
+Agents should work in a structured, predictable workflow driven by the local backlog and clear project goals.
+
+The objective is to build an open-source foundation for AI-assisted software development workflows.
+
+Agents must prioritize practical progress toward a usable MVP, not just small repository improvements.
+
+---
+
+## Project Goal
+
+The goal of this repository is to provide a practical open-source framework for AI-driven development.
+
+It should help developers and teams:
+
+- structure repositories for AI-assisted development
+- manage work through a local backlog
+- collaborate with AI agents step by step
+- reuse prompts and workflows
+- understand how to run autonomous or semi-autonomous development loops
+
+The repository should act as a reference implementation for AI-driven development workflows.
+
+---
+
+## MVP Definition
+
+A usable MVP should include:
+
+- clear agent instructions
+- a local backlog workflow
+- practical Codex usage documentation
+- a prompt library structure
+- contributor guidance for humans and agents
+- at least one example workflow showing the full agent loop
+- minimal helper tooling where it improves the workflow
+
+Agents should prioritize tasks that help deliver this MVP.
+
+---
 
 ## Source of Truth
 
-All work is tracked in the local backlog:
+All work is tracked in the repository backlog.
+
+Path:
 
     backlog/tasks/
 
-For detailed operating rules, see:
+Agents must never invent work outside the backlog unless creating new backlog tasks for human review.
 
-    docs/agent-workflow.md
+---
 
-Agents must select tasks from this directory.
+## Task Selection Rule
 
-## Task Workflow
+When asked to pick the next task, agents must:
 
 1. Scan `backlog/tasks/`
-2. Select a task with status `todo`
-3. Prefer higher priority tasks
-4. Ensure dependencies are completed
-5. Mark task as `in-progress`
-6. Implement the task
-7. Mark task as `done`
+2. Select tasks with status `todo`
+3. Prefer higher priority tasks first
+4. Ensure dependencies are `done`
+5. If multiple tasks qualify, select the lowest `TASK-###` number
 
-## Development Principles
+Agents must implement only one task at a time.
 
-Agents should follow these rules:
+---
 
-- Keep changes **small and focused**
-- Avoid unrelated refactoring
-- Prefer simple solutions
-- Document assumptions
-- Create follow-up tasks if needed
+## Task State Updates
 
-## Repository Structure
+Before starting work, change the task status to:
 
-    backlog/     → project tasks
-    docs/        → documentation
-    prompts/     → AI prompts
-    scripts/     → helper scripts
-    agents/      → agent related docs
+    in-progress
 
-## Output Expectations
+After completion, change the task status to:
 
-When completing a task, the agent should provide:
+    done
 
-- summary of changes
-- list of modified files
+If the task cannot proceed, change the task status to:
+
+    blocked
+
+---
+
+## Implementation Rules
+
+Agents must follow these principles:
+
+- keep changes small and focused
+- avoid unrelated refactoring
+- prefer simple solutions
+- maintain a working repository state
+- avoid overengineering
+- respect the existing repository structure
+
+Each task should ideally result in one pull request or one small commit set.
+
+---
+
+## Reporting Format
+
+When completing a task, agents should report:
+
+- summary of work
+- files changed
 - assumptions made
-- possible follow-up tasks
+- suggested follow-up tasks
 
-## Branch Strategy (MVP Phase)
+---
 
-Until the first MVP is completed, agents may **commit and push directly to the `main` branch**.
+## Follow-up Task Creation
 
-This is allowed to keep development fast and reduce overhead while the project is still in early bootstrap.
+After completing a task, the agent should evaluate whether additional backlog tasks are needed.
+
+The agent must think about the overall project goal and MVP, not only the completed task.
+
+Good follow-up tasks:
+
+- move the repository closer to MVP
+- are small and implementation-ready
+- have clear acceptance criteria
+- represent logical next steps
 
 Rules:
 
-- Keep changes **small and focused**
-- Only implement the **current backlog task**
-- Do not introduce unrelated refactoring
-- Ensure the repository remains in a **working state**
+- use the next sequential `TASK-###` number
+- set status to `todo`
+- include priority, objective, scope, out of scope, acceptance criteria, and dependencies
+- do not start newly created tasks automatically
 
-After the MVP phase, the workflow will change to:
+New tasks require human review before execution.
+
+---
+
+## Human Review Loop
+
+Development follows a human-supervised workflow:
+
+1. Agent picks a backlog task
+2. Agent implements the task
+3. Agent marks the task as `done`
+4. Agent proposes follow-up tasks
+5. Human reviews backlog
+6. Human instructs the agent to continue
+
+Agents must never continue automatically without instruction.
+
+---
+
+## Branch Strategy (MVP Phase)
+
+Until the MVP is complete, agents may commit and push directly to `main`.
+
+This is allowed to keep development fast during early bootstrap.
+
+Rules:
+
+- keep commits small
+- maintain a working state
+- avoid unrelated changes
+
+After MVP, the workflow may switch to:
 
 - feature branches
 - pull requests
 - code review
 
-## Commit Messages
+---
 
-Use clear commit messages referencing the task id.
+## Repository Structure
 
-Example: 
+Typical repository layout:
 
-TASK-001 bootstrap repository structure
+    backlog/     project tasks
+    docs/        documentation
+    prompts/     reusable AI prompts
+    scripts/     helper scripts
+    agents/      agent-related documentation
 
-## MVP-Oriented Backlog Planning
+Agents should respect this structure and place new files appropriately.
 
-The agent must not think only about the current task in isolation.
+---
 
-After completing a task, the agent should think about the broader goal of the repository and propose the next backlog tasks that would move the project toward a usable MVP.
+## Final Principle
 
-Rules:
+Agents should not only complete tasks.
 
-- Propose follow-up tasks even if they are not direct technical sub-tasks of the completed task
-- Prefer tasks that move the repository toward a practical MVP
-- Think in terms of the next logical building blocks for the project
-- Keep proposed tasks small, concrete, and implementation-ready
-- Do not create vague research-only tasks unless they are necessary
-- Do not start newly proposed tasks automatically
-
-Examples of good follow-up thinking:
-- missing repository structure
-- missing prompt library
-- missing examples
-- missing contribution workflow
-- missing helper scripts
-- missing agent documentation
-- missing bootstrap tooling
-
-The goal is not only to finish the current task, but also to help build a realistic MVP backlog for the repository.
-
-## Follow-up Task Creation
-
-After completing a task, the agent should propose additional backlog tasks that help move the repository toward a usable MVP.
-
-The agent must not think only about the current task in isolation.
-
-Rules:
-
-- Propose follow-up tasks when the backlog becomes too small
-- Think about what is missing to reach an MVP
-- Prefer small, concrete, implementation-ready tasks
-- Use the next sequential TASK number
-- Set the initial status to `todo`
-- Include priority, scope, out of scope, acceptance criteria, and dependencies
-- Do not start the newly created tasks automatically
-
-Human review is required before newly created tasks are executed.
+They should help move the project toward a practical, usable MVP for AI-driven development workflows.
