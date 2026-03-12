@@ -4,7 +4,7 @@ This project uses a backlog-driven workflow so humans and agents follow the same
 
 ## 1) Choose a Backlog Task
 
-1. Open `backlog/tasks/`.
+1. Open `agents/<target-name>/backlog/tasks/`.
 2. Keep only tasks with `Status: todo`.
 3. Pick the highest priority (`high` > `medium` > `low`).
 4. Keep only tasks whose dependencies are `done`.
@@ -41,10 +41,11 @@ When finishing a task, include:
 - list of modified files
 - assumptions made
 - possible follow-up tasks
+- verification commands and outcomes
+- pushed commit hash when applicable
 
 ## 6) Close the Task
 
 After implementation and validation:
 1. Update the task status to `done`.
 2. Keep the rest of the task content unchanged except minor clarifications when needed.
-

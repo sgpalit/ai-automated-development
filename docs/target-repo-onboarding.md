@@ -52,7 +52,7 @@ Based on `docs/target-repo-context.md`:
 - [ ] Key risks or documentation gaps are captured
 
 ### Analysis Readiness
-- [ ] Enough repository evidence has been collected to produce `agents/analysis/repo-analysis.md`
+- [ ] Enough repository evidence has been collected to produce `agents/<target-name>/analysis/repo-analysis.md`
 - [ ] Improvement opportunities are specific enough to turn into backlog tasks
 - [ ] The first implementation slice looks small enough for a single cycle
 
@@ -66,10 +66,10 @@ Based on `docs/target-repo-context.md`:
 3. Inspect repository structure and key configuration files.
 4. Confirm the implementation-cycle workflow for this repository: developer verifies changes, creates a focused commit, pushes it, and hands off the commit reference for review.
 5. Run Analyst using `prompts/agents/analyst.md`.
-6. Save the analysis artifact to `agents/analysis/repo-analysis.md`.
+6. Save the analysis artifact to `agents/<target-name>/analysis/repo-analysis.md`.
 7. Confirm the analysis includes repository purpose, stack, architecture, conventions, quality signals, risks, and improvement opportunities.
 8. Run Planner using `prompts/agents/planner.md`.
-9. Propose an initial backlog batch in `agents/backlog/tasks/`.
+9. Propose an initial backlog batch in `agents/<target-name>/backlog/tasks/`.
 10. Human reviews and approves the first implementation candidate.
 
 ## Expected Output Artifacts Before Planning
@@ -82,7 +82,7 @@ The following should exist or be captured before planning starts:
   - success criteria
   - approvals/contact
   - implementation-cycle expectations, including developer commit/push and reviewer commit verification
-- `agents/analysis/repo-analysis.md` containing:
+- `agents/<target-name>/analysis/repo-analysis.md` containing:
   - repository overview
   - technology stack
   - architecture summary
@@ -95,8 +95,8 @@ The following should exist or be captured before planning starts:
 
 ## Expected First-Session Outputs
 
-- `agents/analysis/repo-analysis.md`
-- Initial task batch: `agents/backlog/tasks/TASK-XXX-*.md`
+- `agents/<target-name>/analysis/repo-analysis.md`
+- Initial task batch: `agents/<target-name>/backlog/tasks/TASK-XXX-*.md`
 - Human-approved first task for implementation
 
 ## Related Docs

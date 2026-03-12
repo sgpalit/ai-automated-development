@@ -47,7 +47,6 @@ Minimum `.env` values:
 ```bash
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_MODEL=gpt-4o
-TARGET_REPO_PATH=.
 ```
 
 Variable reference:
@@ -56,7 +55,7 @@ Variable reference:
 |--------|--------|--------|
 | OPENAI_API_KEY | yes for `run_analyst.py` and `run_planner.py` | API key for OpenAI models |
 | OPENAI_MODEL | no | Model name passed to the OpenAI Responses API |
-| TARGET_REPO_PATH | no | Repository to analyze and plan against. Defaults to the current repo. |
+| TARGET_REPOSITORY_CONFIG | no | Target repository config name from `config/targets/`. Defaults to `default` when present. |
 
 ---
 
@@ -78,10 +77,10 @@ Other available scripts:
 What they do:
 
 - `run-agents.sh` defaults to `scripts/run_cycle.py --phase developer --execute` and forwards any extra arguments
-- `run_analyst.py` reads `prompts/agents/analyst.md` and writes `agents/analysis/repo-analysis.md`
-- `run_planner.py` reads `agents/analysis/repo-analysis.md` and writes one or more backlog tasks
+- `run_analyst.py` reads `prompts/agents/analyst.md` and writes `agents/<target-name>/analysis/repo-analysis.md`
+- `run_planner.py` reads `agents/<target-name>/analysis/repo-analysis.md` and writes one grounded backlog task when needed
 - `run_developer.py` writes a developer handoff and an implementation prompt artifact for the selected task, and can optionally apply repo changes with `--execute`
-- `run_cycle.py` is a thin-slice local runner for the analyst, planner, and developer phases
+- `run_cycle.py` is the thin-slice local orchestrator for analyst, planner, developer, reviewer, and tester phases
 
 If no goal is provided to `run-agents.sh`, `run_cycle.py`, or `run_developer.py`, the runner uses `docs/mvp.md` as context and selects the next eligible backlog task automatically.
 
@@ -96,7 +95,7 @@ python3 scripts/run_analyst.py
 Output:
 
 ```text
-agents/analysis/repo-analysis.md
+agents/<target-name>/analysis/repo-analysis.md
 ```
 
 This script uses the OpenAI API.
@@ -112,10 +111,10 @@ python3 scripts/run_planner.py
 Output:
 
 ```text
-agents/backlog/tasks/TASK-###-short-description.md
+agents/<target-name>/backlog/tasks/TASK-###-short-description.md
 ```
 
-The planner expects `agents/analysis/repo-analysis.md` to already exist.
+The planner expects `agents/<target-name>/analysis/repo-analysis.md` to already exist.
 
 ---
 
@@ -147,6 +146,7 @@ Notes:
 - `--dry-run` prints outputs without writing files
 - the developer phase writes a handoff and an implementation prompt under `agents/implementation/developer/`
 - `run-agents.sh` already includes `--execute`; use the Python entry points directly if you want artifact-only behavior
+- use `--target-config <name>` to switch to another configured target repository
 
 ---
 
@@ -175,7 +175,7 @@ It does not currently include:
 - automatic pull request creation
 - MS Teams notifications
 
-For the current human-supervised workflow, see `docs/running-the-system.md` and `docs/workflow.md`.
+For the current workflow modes, see `docs/running-the-system.md` and `docs/workflow.md`.
 
 ---
 
@@ -213,9 +213,9 @@ pip install -r requirements.txt
 
 1. Configure `.env`
 2. Run `python3 scripts/run_analyst.py`
-3. Review `agents/analysis/repo-analysis.md`
+3. Review `agents/<target-name>/analysis/repo-analysis.md`
 4. Run `python3 scripts/run_planner.py`
-5. Review the generated files in `agents/backlog/tasks/`
+5. Review the generated files in `agents/<target-name>/backlog/tasks/`
 6. Continue with the human-supervised implementation workflow
 
 ---
@@ -225,9 +225,15 @@ pip install -r requirements.txt
 ```text
 ai-automated-development
 |
-|- analysis/
-|- backlog/
-|  `- tasks/
+|- agents/
+|  `- <target-name>/
+|     |- analysis/
+|     |- backlog/tasks/
+|     |- handoff/
+|     |- implementation/
+|     |- review/
+|     |- test/
+|     `- logs/
 |- docs/
 |- prompts/
 |  `- agents/

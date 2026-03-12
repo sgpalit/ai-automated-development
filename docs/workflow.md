@@ -8,7 +8,7 @@ The workflow simulates a small software development team.
 
 Each agent performs a specific role and hands off its output to the next agent.
 
-A human remains in control of the process.
+The process may be human-supervised or run in controlled `MVP` auto-continue mode, depending on target repository state and runner settings.
 
 ---
 
@@ -63,7 +63,7 @@ Responsibilities:
 
 Output file:
 
-    agents/analysis/repo-analysis.md
+    agents/<target-name>/analysis/repo-analysis.md
 
 This file contains the structured analysis of the repository.
 
@@ -80,7 +80,7 @@ The planner then generates or updates backlog tasks.
 
 Output location:
 
-    agents/backlog/tasks/TASK-XXX-*.md
+    agents/<target-name>/backlog/tasks/TASK-XXX-*.md
 
 Tasks must be:
 
@@ -93,7 +93,7 @@ The planner must focus on work that moves the project toward the MVP.
 If the existing backlog has no eligible `todo` or `in-progress` task, the planner should attempt to generate exactly one new implementation-ready backlog task from:
 
 - `docs/mvp.md`
-- `agents/analysis/repo-analysis.md`
+- `agents/<target-name>/analysis/repo-analysis.md`
 
 That generated task must be surfaced for human review before implementation continues.
 
@@ -101,7 +101,7 @@ If required planning inputs are missing or no grounded next MVP slice can be ide
 
 ### 4. Human Review
 
-The human reviews the proposed backlog tasks.
+The human reviews the proposed backlog tasks in supervised mode.
 
 The human may:
 
@@ -110,9 +110,9 @@ The human may:
 - split tasks
 - reject tasks
 
-Only approved tasks may be implemented.
+Only approved tasks may be implemented in supervised mode.
 
-When the planner generates a new task because the backlog is exhausted, that generated task must also be reviewed before implementation starts.
+When the planner generates a new task because the backlog is exhausted, that generated task may still be reviewed by a human before implementation starts.
 
 ### 5. Task Implementation (Developer)
 
@@ -128,8 +128,9 @@ Responsibilities:
 Outputs:
 
 - repository changes
-- summary of changes
-- list of modified files
+- developer handoff with summary of changes
+- verification evidence
+- pushed commit hash
 
 ### 6. Code Review (Reviewer)
 
@@ -138,6 +139,8 @@ The Reviewer agent evaluates the implementation.
 Responsibilities:
 
 - verify the task scope was respected
+- inspect the pushed commit, not only local artifacts
+- verify developer verification evidence
 - check code quality
 - detect risks or mistakes
 - ensure maintainability
@@ -158,21 +161,23 @@ Responsibilities:
 - verify acceptance criteria
 - check functional behavior
 - detect regressions
+- report whether the loop should continue, retry, or stop blocked
 
 Outputs:
 
 - validation result
 - test findings
+- explicit readiness outcome such as `READY`, `RETRY`, or `BLOCKED`
 
-### 8. Human Approval
+### 8. Human Approval or Orchestrator Continuation
 
-The human reviews the results of:
+The human or orchestrator reviews the results of:
 
 - implementation
 - review
 - validation
 
-The human decides whether:
+The human decides whether in supervised mode, and the orchestrator may decide automatically in `MVP` auto-continue mode:
 
 - the task is accepted
 - additional fixes are required
@@ -185,14 +190,14 @@ The human decides whether:
 After a task is completed and accepted, the workflow repeats:
 
 1. Planner updates backlog if necessary
-2. Human selects the next task
+2. Human selects the next task in supervised mode, or the orchestrator continues automatically in `MVP`
 3. Developer implements the task
 4. Reviewer reviews the change
 5. Tester validates the result
 
 If the backlog is exhausted before the MVP is complete, the planner should create one grounded next MVP task for human review and then stop.
 
-This loop continues until the goal or MVP is reached.
+This loop continues until the goal or MVP is reached, or the orchestrator records a stop reason.
 
 ---
 
@@ -202,7 +207,7 @@ This loop continues until the goal or MVP is reached.
 
 Agents do not run freely.
 
-Each step requires explicit instruction or approval.
+Outside explicit `MVP` auto-continue mode, each step requires explicit instruction or approval.
 
 ### Small Iterations
 

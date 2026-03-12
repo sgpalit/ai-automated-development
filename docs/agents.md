@@ -22,7 +22,7 @@ Reusable role-specific output templates are available in `docs/templates/`.
 
 ### Orchestrator
 - Chooses next agent based on workflow state and available artifacts
-- Enforces human approval gates before implementation and final acceptance
+- Enforces state-aware workflow rules, human approval gates where required, and clean stop behavior
 
 ### Analyst
 - Analyzes repository context, risks, and opportunities
@@ -44,7 +44,7 @@ Reusable role-specific output templates are available in `docs/templates/`.
 
 ### Tester
 - Verifies acceptance criteria and regression risk
-- Returns clear decision: `PASSED` or `FAILED`
+- Returns clear decision: `READY`, `RETRY`, or `BLOCKED`
 
 ### Human Approver
 - Approves goals, backlog changes, implementation acceptance, and loop continuation

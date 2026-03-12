@@ -6,7 +6,7 @@ This document explains how a human runs the multi-agent development workflow aga
 
 The system simulates a small software team using AI agents.
 
-The human remains in control of the workflow.
+The workflow may be human-supervised or run in controlled `MVP` auto-continue mode, depending on target repository state and runner configuration.
 
 ---
 
@@ -33,16 +33,7 @@ Before running the system, ensure the repository contains:
 - workflow definition (`docs/workflow.md`)
 - MVP definition (`docs/mvp.md`)
 - agent prompts (`prompts/agents/`)
-- generated backlog artifacts (`agents/backlog/tasks/`)
-
-Create these directories if they do not exist:
-
-    analysis/
-    reviews/
-    validation/
-
----
-
+- generated backlog artifacts (`agents/<target-name>/backlog/tasks/`)
 
 ## Thin-Slice CLI (Analyst + Planner + Developer)
 
@@ -66,7 +57,6 @@ Minimum `.env` values:
 
     OPENAI_API_KEY=<your_api_key>
     OPENAI_MODEL=gpt-4o
-    TARGET_REPO_PATH=.
 
 Run the Analyst phase:
 
@@ -74,7 +64,7 @@ Run the Analyst phase:
 
 This creates:
 
-    agents/analysis/repo-analysis.md
+    agents/<target-name>/analysis/repo-analysis.md
 
 Run the Planner phase:
 
@@ -82,7 +72,7 @@ Run the Planner phase:
 
 This creates one or more backlog task files in:
 
-    agents/backlog/tasks/TASK-###-short-description.md
+    agents/<target-name>/backlog/tasks/TASK-###-short-description.md
 
 Run the Developer artifact phase:
 
@@ -105,7 +95,7 @@ Without `--execute`, `run_developer.py` prepares developer artifacts only.
 
 When no goal is provided, the local runner uses `docs/mvp.md` as default context and selects the next eligible backlog task automatically.
 
-These scripts are intentionally minimal and file-based. Reviewer and tester runners can be added later (`run_reviewer.py`, `run_tester.py`).
+These scripts are intentionally file-based. Reviewer and tester runners are available as `run_reviewer.py` and `run_tester.py`.
 
 Use the Python entry points directly when you want a non-executing planner or developer-artifact pass.
 
@@ -141,7 +131,7 @@ Prompt the agent with:
 
 Expected output:
 
-    agents/analysis/repo-analysis.md
+    agents/<target-name>/analysis/repo-analysis.md
 
 ---
 
@@ -151,13 +141,13 @@ The Planner agent converts analysis into backlog tasks.
 
 Prompt the agent with:
 
-    Read docs/mvp.md, docs/agents.md, prompts/agents/planner.md, and agents/analysis/repo-analysis.md.
+    Read docs/mvp.md, docs/agents.md, prompts/agents/planner.md, and agents/<target-name>/analysis/repo-analysis.md.
 
     Review the repository and generate backlog tasks that move the project toward the MVP.
 
 Expected output:
 
-    agents/backlog/tasks/TASK-XXX-*.md
+    agents/<target-name>/backlog/tasks/TASK-XXX-*.md
 
 The human reviews these tasks before implementation begins.
 
@@ -244,8 +234,9 @@ Output file:
 
 Possible outcomes:
 
-- PASSED
-- FAILED
+- READY
+- RETRY
+- BLOCKED
 
 ---
 
@@ -257,7 +248,7 @@ The human reviews:
 - review report
 - validation result
 
-The human decides whether the task is accepted.
+The human decides whether the task is accepted in supervised mode. In `MVP` auto-continue mode, the orchestrator may continue or stop based on reviewer/tester outputs and state-aware policy.
 
 If accepted, the task status becomes:
 
@@ -275,13 +266,13 @@ After completing a task:
 4. Reviewer reviews the change
 5. Tester validates the result
 
-The loop continues until the project goal is achieved.
+The loop continues until the project goal is achieved or the orchestrator records a clear stop reason.
 
 ---
 
 # Key Principle
 
-The system is **human-supervised automation**.
+The system is **state-aware automation with human oversight**.
 
 Agents assist with:
 
@@ -296,6 +287,7 @@ The human remains responsible for:
 - defining goals
 - approving tasks
 - accepting results
+- handling blockers or state transitions that require intervention
 
 # Approval and Readiness References
 

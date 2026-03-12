@@ -9,7 +9,7 @@ Status scale: `done` / `partial` / `missing`.
 | MVP Criterion (`docs/mvp.md`) | Status | Evidence |
 |---|---|---|
 | Clear agent instructions | done | `docs/agents.md`, `prompts/agents/*.md` |
-| Local backlog workflow | done | `backlog/README.md`, `backlog/tasks/` |
+| Local backlog workflow | done | `agents/<target-name>/backlog/tasks/`, `docs/agent-workflow.md` |
 | Practical Codex usage docs | done | `docs/codex-cli.md`, `docs/running-the-system.md` |
 | Prompt library structure | done | `prompts/agents/`, role prompt files |
 | Contributor guidance | done | `docs/contributing.md`, `AGENTS.md` |
@@ -20,8 +20,8 @@ Status scale: `done` / `partial` / `missing`.
 
 ### Current gaps
 
-- `partial`: No automated enforcement of handoff templates (manual process only).
-- `partial`: Validation/report artifact storage conventions are documented but not yet standardized in dedicated directories.
+- `partial`: Some docs and scripts are still being aligned to the target-scoped artifact model and state-aware auto-continue behavior.
+- `partial`: Reviewer/tester/orchestrator evidence handling is improving but not yet fully standardized end to end.
 
 ### Suggested follow-up tasks (post-bootstrap backlog)
 

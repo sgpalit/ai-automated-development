@@ -65,7 +65,7 @@ When a task is complete, report:
 - Pushed commit hash when developer execution commits work
 
 ## Follow-up Task Creation
-If implementation reveals additional work, create follow-up tasks in `backlog/tasks/` rather than expanding the scope of the current task.
+If implementation reveals additional work, create follow-up tasks in `agents/<target-name>/backlog/tasks/` rather than expanding the scope of the current task.
 
 ## Human Review Loop
 Keep work review-friendly for humans by limiting scope to the current task, preserving repository usability, and providing clear completion reporting.

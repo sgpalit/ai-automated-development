@@ -27,10 +27,11 @@ Agents should write outputs to dedicated directories in the repository.
 
 The system uses the following directories for agent outputs.
 
-    analysis/
-    backlog/tasks/
-    reviews/
-    validation/
+    agents/<target-name>/analysis/
+    agents/<target-name>/backlog/tasks/
+    agents/<target-name>/review/
+    agents/<target-name>/test/
+    agents/<target-name>/logs/
 
 Each directory corresponds to a stage in the workflow.
 
@@ -42,7 +43,7 @@ The Analyst agent writes repository analysis results.
 
 Output file:
 
-    agents/analysis/repo-analysis.md
+    agents/<target-name>/analysis/repo-analysis.md
 
 Contents should include:
 
@@ -64,7 +65,7 @@ The Planner agent creates backlog tasks.
 
 Output location:
 
-    backlog/tasks/
+    agents/<target-name>/backlog/tasks/
 
 Each task must be a separate file using the naming format:
 
@@ -93,6 +94,8 @@ Outputs include:
 
 - repository file changes
 - implementation summary
+- pushed commit hash
+- verification evidence
 
 The summary should contain:
 
@@ -110,15 +113,18 @@ The Reviewer agent evaluates the developer changes.
 
 Output location:
 
-    reviews/
+    agents/<target-name>/review/reviewer/
 
 Example file:
 
-    agents/review/reviewer/task-###-review.md
+    agents/<target-name>/review/reviewer/task-###-review.md
 
 The review must include:
 
 - review summary
+- pushed commit hash checked
+- changed files observed
+- developer verification evidence status
 - scope compliance
 - acceptance criteria verification
 - issues
@@ -133,18 +139,18 @@ The Tester agent validates the change.
 
 Output location:
 
-    validation/
+    agents/<target-name>/test/
 
 Example file:
 
-    agents/test/task-###-test.md
+    agents/<target-name>/test/task-###-test.md
 
 The validation report must include:
 
 - validation summary
 - acceptance criteria verification
 - detected issues
-- validation result (PASSED or FAILED)
+- validation result (`READY`, `RETRY`, or `BLOCKED`)
 
 ---
 
@@ -172,19 +178,19 @@ Agents should follow these naming rules.
 
 Analysis:
 
-    agents/analysis/repo-analysis.md
+    agents/<target-name>/analysis/repo-analysis.md
 
 Backlog tasks:
 
-    agents/backlog/tasks/TASK-###-description.md
+    agents/<target-name>/backlog/tasks/TASK-###-description.md
 
 Reviews:
 
-    agents/review/reviewer/task-###-review.md
+    agents/<target-name>/review/reviewer/task-###-review.md
 
 Validation:
 
-    agents/test/task-###-test.md
+    agents/<target-name>/test/task-###-test.md
 
 ---
 

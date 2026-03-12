@@ -171,7 +171,7 @@ These observations will be used by the Planner agent to generate backlog tasks.
 
 The Analyst agent must produce a structured report stored in:
 
-    agents/analysis/repo-analysis.md
+    agents/<target-name>/analysis/repo-analysis.md
 
 The report should contain:
 

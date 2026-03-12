@@ -21,7 +21,7 @@ Before starting a coding session:
 
 1. Read `AGENTS.md`
 2. Read `docs/agent-workflow.md`
-3. Scan `backlog/tasks/` and choose the next eligible task (`todo`, highest priority, dependencies done, lowest task number)
+3. Scan `agents/<target-name>/backlog/tasks/` and choose the next eligible task (`todo`, highest priority, dependencies done, lowest task number)
 4. Mark the selected task as `in-progress`
 
 After finishing implementation and checks:
@@ -51,7 +51,7 @@ codex "Read AGENTS.md, pick the next todo task, and implement it with small focu
 Optional: include repository context in your prompt:
 
 ```bash
-codex "Use backlog/tasks as source of truth, follow docs/agent-workflow.md, and keep one-task scope."
+codex "Use agents/<target-name>/backlog/tasks as source of truth, follow docs/agent-workflow.md, and keep one-task scope."
 ```
 
 ## Typical Session Pattern
