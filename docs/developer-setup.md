@@ -1,6 +1,6 @@
 # Developer Setup
 
-This document explains how developers can run the **AI Automated Development agents** locally.
+This document explains how to run the current local agent scripts in this repository.
 
 ---
 
@@ -11,12 +11,7 @@ Required tools:
 - Linux / WSL
 - Git
 - Python 3.11+
-- OpenAI API key
-- GitHub personal access token
-
-Optional:
-
-- MS Teams webhook for notifications
+- OpenAI API key for the OpenAI-backed scripts
 
 ---
 
@@ -34,158 +29,162 @@ cd ai-automated-development
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
 pip install -r requirements.txt
 ```
 
 ---
 
-# 3. Environment Variables
+# 3. Configure Environment Variables
 
-Create a `.env` file or export variables in your shell.
-
-Example:
+Copy the example file:
 
 ```bash
-export OPENAI_API_KEY="your-openai-api-key"
-export GITHUB_TOKEN="your-github-token"
-export MS_TEAMS_WEBHOOK_URL="https://outlook.office.com/webhook/..." # optional
+cp .env.example .env
 ```
 
-Required variables:
+Minimum `.env` values:
 
-| Variable | Description |
-|--------|--------|
-| OPENAI_API_KEY | API key for OpenAI models |
-| GITHUB_TOKEN | GitHub token used for repo access |
+```bash
+OPENAI_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-4o
+TARGET_REPO_PATH=.
+```
 
-Optional:
+Variable reference:
 
-| Variable | Description |
-|--------|--------|
-| MS_TEAMS_WEBHOOK_URL | Sends agent notifications |
+| Variable | Required | Description |
+|--------|--------|--------|
+| OPENAI_API_KEY | yes for `run_analyst.py` and `run_planner.py` | API key for OpenAI models |
+| OPENAI_MODEL | no | Model name passed to the OpenAI Responses API |
+| TARGET_REPO_PATH | no | Repository to analyze and plan against. Defaults to the current repo. |
 
 ---
 
-# 4. GitHub Token Permissions
+# 4. Available Entry Points
 
-Create a token here:
+The simplest entry point is:
 
-https://github.com/settings/tokens
+- `./run-agents.sh "Your goal here"`
 
-Recommended permissions:
+Other available scripts:
 
-```
-repo
-workflow
-read:org
-```
+- `python3 scripts/run_analyst.py`
+- `python3 scripts/run_planner.py`
+- `python3 scripts/run_cycle.py "Your goal here" --phase planner`
 
-The token allows the agent to:
+What they do:
 
-- read issues
-- create branches
-- push commits
-- open pull requests
+- `run-agents.sh` forwards arguments to `scripts/run_cycle.py`
+- `run_analyst.py` reads `prompts/agents/analyst.md` and writes `analysis/repo-analysis.md`
+- `run_planner.py` reads `analysis/repo-analysis.md` and writes one or more backlog tasks
+- `run_cycle.py` is a thin-slice local runner for the analyst and planner phases
 
 ---
 
-# 5. Running Agents
-
-Run the main agent script:
+# 5. Run the Analyst
 
 ```bash
-./run-agents.sh
+python3 scripts/run_analyst.py
 ```
 
-Or directly:
+Output:
 
-```bash
-python tools/agents/run_agents.py
+```text
+analysis/repo-analysis.md
 ```
 
-Typical workflow:
-
-1. Agent scans GitHub issues
-2. Selects a task
-3. Generates code using OpenAI
-4. Creates a branch
-5. Opens a Pull Request
+This script uses the OpenAI API.
 
 ---
 
-# 6. Running Agents Continuously
+# 6. Run the Planner
 
-Example loop:
+```bash
+python3 scripts/run_planner.py
+```
+
+Output:
+
+```text
+backlog/tasks/TASK-###-short-description.md
+```
+
+The planner expects `analysis/repo-analysis.md` to already exist.
+
+---
+
+# 7. Run the Thin-Slice Local CLI
+
+Use this when you want a simple end-to-end analyst + planner pass from one command:
+
+```bash
+./run-agents.sh "Improve onboarding documentation"
+```
+
+Useful options:
+
+```bash
+./run-agents.sh "Improve onboarding documentation" --phase analyst
+./run-agents.sh "Improve onboarding documentation" --dry-run
+./run-agents.sh "Improve onboarding documentation" --repo /path/to/target-repo
+```
+
+Notes:
+
+- `--phase analyst` runs only the analyst phase
+- default behavior runs analyst and planner
+- `--dry-run` prints outputs without writing files
+
+---
+
+# 8. Running in a Loop
+
+If you want to re-run the thin-slice planner loop every 5 minutes:
 
 ```bash
 while true
 do
-  ./run-agents.sh
+  ./run-agents.sh "Improve onboarding documentation"
   sleep 300
 done
 ```
 
-This checks for new tasks every **5 minutes**.
+---
+
+# 9. Current Workflow Model
+
+The current implementation is local and file-based.
+
+It does not currently include:
+
+- GitHub issue polling
+- automatic branch creation
+- automatic pull request creation
+- MS Teams notifications
+
+For the current human-supervised workflow, see `docs/running-the-system.md` and `docs/workflow.md`.
 
 ---
 
-# 7. GitHub Integration
-
-Agents interact with the repository by:
-
-- reading backlog tasks
-- creating branches
-- committing changes
-- opening pull requests
-
-Typical branch naming:
-
-```
-agent/issue-123
-```
-
----
-
-# 8. Notifications
-
-If `MS_TEAMS_WEBHOOK_URL` is configured, agents send updates:
-
-- task started
-- PR created
-- task failed
-
----
-
-# 9. Troubleshooting
+# 10. Troubleshooting
 
 ## Missing API key
 
-```
-OPENAI_API_KEY not set
+If you run `run_analyst.py` or `run_planner.py` without an API key, the scripts fail with:
+
+```text
+OPENAI_API_KEY is not set.
 ```
 
-Solution:
+Set the key in `.env` or export it in your shell.
+
+## Planner fails because analysis is missing
+
+Generate the analysis first:
 
 ```bash
-export OPENAI_API_KEY=...
+python3 scripts/run_analyst.py
 ```
-
----
-
-## GitHub authentication failure
-
-Verify token:
-
-```bash
-export GITHUB_TOKEN=...
-```
-
----
 
 ## Python dependencies missing
 
@@ -197,35 +196,27 @@ pip install -r requirements.txt
 
 ---
 
-# 10. Recommended Workflow
+# 11. Recommended Workflow
 
-1. Create tasks in:
-
-```
-backlog/tasks/
-```
-
-2. Run agents.
-
-3. Review Pull Requests.
-
-4. Merge approved changes.
+1. Configure `.env`
+2. Run `python3 scripts/run_analyst.py`
+3. Review `analysis/repo-analysis.md`
+4. Run `python3 scripts/run_planner.py`
+5. Review the generated files in `backlog/tasks/`
+6. Continue with the human-supervised implementation workflow
 
 ---
 
 # Directory Overview
 
-```
+```text
 ai-automated-development
-│
-├─ backlog/
-│   └─ tasks/
-│
-├─ tools/
-│   └─ agents/
-│
-├─ scripts/
-│
-└─ docs/
-    └─ developer-setup.md
+|
+|- analysis/
+|- backlog/
+|  `- tasks/
+|- docs/
+|- prompts/
+|  `- agents/
+`- scripts/
 ```
