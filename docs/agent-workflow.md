@@ -1,51 +1,53 @@
 # Agent Workflow
 
-This document defines the detailed, repo-native workflow for AI agents working in this repository.
+## Purpose
+This document defines how AI agents should operate in this repository so task execution stays consistent, scoped, and reliable.
 
-## 1) Select the Next Task (Deterministic Rule)
-
-When choosing a task from `backlog/tasks/`, use this exact order:
+## Next Task Selection Rule
+Select the next task from `backlog/tasks/` using this order:
 
 1. Keep only tasks with `Status: todo`.
-2. From those, keep the highest priority first (`high` > `medium` > `low`).
-3. From that set, keep only tasks whose dependencies are all `done`.
-4. If multiple tasks still qualify, pick the lowest task number.
+2. Prefer highest priority (`high` over `medium` over `low`).
+3. Keep only tasks whose dependencies are all marked `done`.
+4. If multiple tasks remain, select the lowest task number.
 
 Example tie-break:
 
 - `TASK-003` and `TASK-004` are both `todo`, `high`, and unblocked.
-- Pick `TASK-003` because it has the lower number.
+- Select `TASK-003` because it has the lower number.
 
-## 2) Mark Task State in Backlog
-
-Before making code changes:
+## Task State Updates
+Before implementation:
 
 1. Open the selected task file.
-2. Change `## Status` to `in-progress`.
+2. Set `## Status` to `in-progress`.
 
-After implementation and validation are complete:
+After implementation and validation:
 
-1. Change `## Status` to `done`.
-2. Keep the rest of the task content intact unless a small clarification is required.
+1. Set `## Status` to `done`.
+2. Leave the rest of the task content unchanged, except for small clarifications when needed.
 
-## 3) Implementation Rules
-
+## Implementation Rules
 - Keep changes small and focused on the current task.
-- Do not introduce unrelated refactors.
+- Avoid unrelated refactoring.
 - Prefer simple, maintainable solutions.
 - Keep the repository in a working state.
 
-## 4) Reporting Format (Required)
-
-At task completion, report:
+## Reporting Format
+When a task is complete, report:
 
 - Summary of changes
 - List of modified files
 - Assumptions made
 - Possible follow-up tasks
 
-## 5) Branch Strategy (MVP Phase)
+## Follow-up Task Creation
+If implementation reveals additional work, create follow-up tasks in `backlog/tasks/` rather than expanding the scope of the current task.
 
+## Human Review Loop
+Keep work review-friendly for humans by limiting scope to the current task, preserving repository usability, and providing clear completion reporting.
+
+## Branch Strategy (MVP Phase)
 During MVP bootstrap, agents may commit and push directly to `main`.
 
 Constraints:
@@ -55,4 +57,4 @@ Constraints:
 - Do not perform unrelated refactoring.
 - Ensure the repository remains usable after changes.
 
-After MVP, workflow will move to feature branches + pull requests + review.
+After MVP, the workflow will move to feature branches, pull requests, and review.
