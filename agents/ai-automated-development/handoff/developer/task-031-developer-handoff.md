@@ -1,0 +1,90 @@
+# Developer Handoff
+
+## Goal
+Close the loop-control gap where `scripts/run_cycle.py` auto-continues through the tester phase without consuming a clear tester outcome. Implement deterministic tester outcome parsing and use it to continue only on explicit READY/continue-style results, while writing a visible stop reason artifact when the tester reports retry or blocked.
+
+## Date
+2026-03-13
+
+## Repository Path
+`/home/sp/workspace/github/ai-automated-development`
+
+## Selected Task Code
+`TASK-031`
+
+## Source Task File Path
+`agents/ai-automated-development/backlog/tasks/TASK-031-ai-auto-tester-stop-signal.md`
+
+## Objective
+Close the loop-control gap where `scripts/run_cycle.py` auto-continues through the tester phase without consuming a clear tester outcome. Implement deterministic tester outcome parsing and use it to continue only on explicit READY/continue-style results, while writing a visible stop reason artifact when the tester reports retry or blocked.
+
+## Required Inputs
+- `agents/ai-automated-development/backlog/tasks/TASK-031-ai-auto-tester-stop-signal.md`
+- `agents/ai-automated-development/analysis/repo-analysis.md`
+- `AGENTS.md`
+- `docs/agent-workflow.md`
+- `docs/agent-handoff-contract.md`
+
+## Implementation Rules
+- Implement exactly one approved backlog task in a focused change set.
+- Set the selected task status to `in-progress` before implementation.
+- Implement only in-scope changes required by the task.
+- Keep unrelated refactors out of scope.
+- Run relevant checks before completion.
+- Set task status to `done` when acceptance criteria are met, or `blocked` if work cannot proceed.
+
+## Expected Output
+- A small, working repository change set that implements the selected task.
+- The selected backlog task updated through the required status transitions.
+- A developer handoff/report aligned with `docs/agent-handoff-contract.md` and ready for reviewer follow-up.
+- Pushed commit hash for reviewer reference: `17c867ba39e549b8a98fab80b165685790ed0f1e`
+
+## Commit Reference
+- Pushed commit hash: `17c867ba39e549b8a98fab80b165685790ed0f1e`
+- Reviewer should inspect the pushed commit referenced below, not only the local worktree.
+
+## Full Task Content
+```md
+# TASK-031 Add tester stop-condition signaling to auto-continue runner
+
+## Status
+done
+
+## Priority
+high
+
+## Objective
+Close the loop-control gap where `scripts/run_cycle.py` auto-continues through the tester phase without consuming a clear tester outcome. Implement deterministic tester outcome parsing and use it to continue only on explicit READY/continue-style results, while writing a visible stop reason artifact when the tester reports retry or blocked.
+
+## Scope
+- Update `scripts/run_tester.py` to emit a deterministic machine-readable outcome field in the tester report content, for example an explicit `Outcome: READY|RETRY|BLOCKED` line, in the existing target-scoped tester artifacts under `agents/<target-name>/test/`.
+- Update `scripts/run_cycle.py` to read the latest tester artifact for the selected task, parse the tester outcome, and treat non-ready outcomes as stop conditions during `--auto-continue`.
+- If needed, update the current `MVP` phase-gating logic in `scripts/run_cycle.py` so a controlled `--phase tester --auto-continue` path can actually reach tester outcome evaluation instead of being rewritten to reviewer before the tester phase runs.
+- If not already present in the continuation path, write a visible stop artifact/log entry via the existing run logging flow under `agents/ai-automated-development/logs/` that records the tester-driven stop reason.
+
+## Out of Scope
+- Changing reviewer or developer verification policy beyond what is needed for tester outcome consumption.
+- Adding new external services, schedulers, or notification channels.
+- Redesigning the full artifact schema for all phases.
+
+## Acceptance Criteria
+- Running `python scripts/run_tester.py --repo . --task agents/ai-automated-development/backlog/tasks/<task-file>.md --dry-run` prints a tester report that includes a deterministic explicit outcome line such as `Outcome: READY`, `Outcome: RETRY`, or `Outcome: BLOCKED`.
+- When `python scripts/run_cycle.py --repo . --phase tester --auto-continue --dry-run` reaches a tester report whose outcome is not ready/continue, the cycle summary indicates auto-continuation stops because of the tester result instead of silently proceeding to another cycle.
+- If current `MVP` state policy would otherwise rewrite `--phase tester`, this task must update that policy enough for the above tester-gated dry-run path to execute intentionally rather than being redirected before tester runs.
+- In a non-dry-run execution, the run writes a visible target-scoped log artifact under `agents/ai-automated-development/logs/` whose recorded reason reflects the tester-driven stop condition.
+- `python -m py_compile scripts/run_cycle.py scripts/run_tester.py` completes successfully.
+
+## Dependencies
+- None
+
+## Notes
+Generated by `scripts/run_planner.py` because the backlog was exhausted during an AI-backed MVP gap evaluation.
+Grounding:
+- `docs/mvp.md` requires the orchestrator to stop cleanly on failures/blockers and requires tester output to report a clear continue / retry / blocked outcome that the orchestrator can use for loop continuation decisions.
+- `scripts/run_cycle.py` currently includes auto-continue logic and stop-reason handling, but the repository evidence does not show tester outcome parsing being consumed by the runner.
+- `scripts/run_tester.py` currently derives a coarse `READY` vs not-ready status in report generation under `agents/<target-name>/test/`, but no repository evidence shows a deterministic contract that `scripts/run_cycle.py` reads to enforce tester-gated continuation.
+- Current `MVP` runner policy rewrites `--phase tester` to reviewer, so tester-gated continuation is not yet reachable without a focused runner change in `scripts/run_cycle.py`.
+- The target-scoped analysis explicitly notes that future phases still need integration points and output contracts, making tester-to-orchestrator integration a grounded remaining MVP gap.
+Slug: `ai-auto-tester-stop-signal`
+
+```

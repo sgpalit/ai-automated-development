@@ -185,9 +185,10 @@ def execute_cycle(
 ) -> PlannerPhaseResult | None:
     phase_sequence = PHASE_ORDER[: PHASE_ORDER.index(args.phase) + 1]
 
+    print("Running phase: analyst")
     run_analyst_phase(
         goal=analyst_goal,
-        repo_root=repo_root,
+        target_repo_root=repo_root,
         workspace_root=workspace_root,
         target_name=target_name,
         dry_run=args.dry_run,
@@ -195,15 +196,19 @@ def execute_cycle(
 
     planner_result: PlannerPhaseResult | None = None
     if "planner" in phase_sequence:
+        print("Running phase: planner")
         planner_result = run_planner_phase(
-            goal=analyst_goal,
-            repo_root=repo_root,
+            goal=args.goal,
+            target_repo_root=repo_root,
             workspace_root=workspace_root,
             target_name=target_name,
             dry_run=args.dry_run,
         )
+        if not planner_result.continue_to_implementation:
+            return planner_result
 
     if "developer" in phase_sequence:
+        print("Running phase: developer")
         run_developer_phase(
             goal=analyst_goal,
             repo_root=repo_root,
@@ -211,27 +216,29 @@ def execute_cycle(
             target_name=target_name,
             dry_run=args.dry_run,
             execute=args.execute,
-            planned_task=planner_result.selected_task if planner_result else None,
+            planned_task=planner_result.task_artifact if planner_result else None,
         )
 
     if "reviewer" in phase_sequence:
+        print("Running phase: reviewer")
         run_reviewer_phase(
             goal=analyst_goal,
             repo_root=repo_root,
             workspace_root=workspace_root,
             target_name=target_name,
             dry_run=args.dry_run,
-            planned_task=planner_result.selected_task if planner_result else None,
+            planned_task=planner_result.task_artifact if planner_result else None,
         )
 
     if "tester" in phase_sequence:
+        print("Running phase: tester")
         run_tester_phase(
             goal=analyst_goal,
             repo_root=repo_root,
             workspace_root=workspace_root,
             target_name=target_name,
             dry_run=args.dry_run,
-            planned_task=planner_result.selected_task if planner_result else None,
+            planned_task=planner_result.task_artifact if planner_result else None,
         )
 
     return planner_result
@@ -250,10 +257,10 @@ def read_tester_outcome(
     target_name: str,
     planner_result: PlannerPhaseResult | None,
 ) -> tuple[str | None, Path | None]:
-    if planner_result is None or planner_result.selected_task is None:
+    if planner_result is None or planner_result.task_artifact is None:
         return None, None
 
-    task_path, _task_content = planner_result.selected_task
+    task_path, _task_content = planner_result.task_artifact
     task_code = extract_task_code(task_path).lower()
     report_path = tester_report_path(workspace_root, target_name, task_code)
     if not report_path.exists():
@@ -318,7 +325,7 @@ def determine_continuation_decision(
             details={},
         )
 
-    if not planner_result.has_task:
+    if planner_result.task_artifact is None:
         return ContinuationDecision(
             continue_running=False,
             reason="planner-stopped-no-grounded-next-task",
@@ -327,6 +334,17 @@ def determine_continuation_decision(
                 "next task from the backlog."
             ),
             details={},
+        )
+
+    if not planner_result.continue_to_implementation:
+        return ContinuationDecision(
+            continue_running=False,
+            reason="planner-stopped-other",
+            summary=(
+                "Stopped auto-continuation because the planner produced a task artifact "
+                "but did not continue to implementation."
+            ),
+            details={"planner_task": str(planner_result.task_artifact[0])},
         )
 
     if effective_phase == "tester":
@@ -402,11 +420,10 @@ def write_continuation_artifact(
         "planner": None
         if planner_result is None
         else {
-            "has_task": planner_result.has_task,
-            "summary_path": str(planner_result.summary_path),
-            "selected_task": None
-            if planner_result.selected_task is None
-            else str(planner_result.selected_task[0]),
+            "continue_to_implementation": planner_result.continue_to_implementation,
+            "task_artifact": None
+            if planner_result.task_artifact is None
+            else str(planner_result.task_artifact[0]),
         },
     }
 
