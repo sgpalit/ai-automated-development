@@ -8,6 +8,10 @@ All work is tracked in the local backlog:
 
     backlog/tasks/
 
+For detailed operating rules, see:
+
+    docs/agent-workflow.md
+
 Agents must select tasks from this directory.
 
 ## Task Workflow
