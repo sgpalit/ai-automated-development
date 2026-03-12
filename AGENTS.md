@@ -77,3 +77,29 @@ Use clear commit messages referencing the task id.
 Example: 
 
 TASK-001 bootstrap repository structure
+
+## MVP-Oriented Backlog Planning
+
+The agent must not think only about the current task in isolation.
+
+After completing a task, the agent should think about the broader goal of the repository and propose the next backlog tasks that would move the project toward a usable MVP.
+
+Rules:
+
+- Propose follow-up tasks even if they are not direct technical sub-tasks of the completed task
+- Prefer tasks that move the repository toward a practical MVP
+- Think in terms of the next logical building blocks for the project
+- Keep proposed tasks small, concrete, and implementation-ready
+- Do not create vague research-only tasks unless they are necessary
+- Do not start newly proposed tasks automatically
+
+Examples of good follow-up thinking:
+- missing repository structure
+- missing prompt library
+- missing examples
+- missing contribution workflow
+- missing helper scripts
+- missing agent documentation
+- missing bootstrap tooling
+
+The goal is not only to finish the current task, but also to help build a realistic MVP backlog for the repository.
