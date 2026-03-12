@@ -60,6 +60,8 @@ A successful MVP demonstrates:
 - a repeatable workflow from analysis to pushed task completion
 - automatic continuation while the target repository state is `MVP`
 - task-level commit and push behavior by the developer agent
+- enforced verification before developer completion, commit, and push
+- reviewer and tester decisions grounded in the pushed task result and recorded verification evidence
 - repository-aware planning grounded in the current target codebase
 - at least one end-to-end example run that reaches a real completed task
 
@@ -74,9 +76,10 @@ The intended MVP workflow is:
 3. Analyst agent inspects the repository
 4. Planner agent creates or refines backlog tasks
 5. Developer agent implements one task
-6. Developer agent verifies, commits, and pushes the task result
-7. Reviewer agent reviews the pushed commit
-8. Tester agent validates the task result and workflow readiness
+6. Developer agent runs the required verification commands and records their results
+7. Developer agent commits and pushes the verified task result
+8. Reviewer agent reviews the pushed commit and the recorded developer verification evidence
+9. Tester agent validates the task result, acceptance criteria, and loop readiness
 9. Orchestrator decides whether to continue with the next task
 10. The loop repeats automatically until the repository reaches `MVP_DONE` or a stop condition is hit
 
@@ -150,7 +153,9 @@ Responsibilities:
 
 - make focused repository changes
 - stay within scope
-- run the required verification
+- run the required verification commands for the task type before completion
+- record the verification commands and outcomes in the handoff or task artifact
+- fail or block the task instead of committing if required verification does not pass
 - create a focused commit
 - push the commit in `MVP` mode
 - report the pushed commit hash for reviewer/tester usage
@@ -162,8 +167,10 @@ Responsible for reviewing the developer output.
 Responsibilities:
 
 - review the pushed commit, not only the local worktree
+- review the developer verification evidence, not only the code diff
 - check scope compliance
 - check quality, maintainability, and safety
+- check whether the developer actually changed the intended implementation files
 - approve or request changes with explicit reasoning
 
 ### 6. Tester
@@ -172,10 +179,10 @@ Responsible for validating the change.
 
 Responsibilities:
 
-- run or define validation checks
-- verify acceptance criteria
-- confirm task readiness
-- report whether the loop can safely continue
+- run or define independent validation checks beyond the developer's self-checks
+- verify acceptance criteria against the actual pushed task result
+- confirm task readiness for continued automation
+- report whether the loop can safely continue, should retry, or should stop blocked
 
 ### 7. Memory / Context Layer
 
@@ -249,6 +256,28 @@ Developer output must be able to:
 - create a focused commit for the completed task
 - push that commit
 - hand off the exact commit hash for review
+
+### Verification Enforcement
+
+The developer agent must not be allowed to mark a task done or push a commit without verification evidence.
+
+Minimum MVP expectations:
+
+- required verification commands are selected based on task type
+- the executed commands and outcomes are recorded in the developer handoff
+- commit and push are blocked when required verification fails or is skipped
+- task-file-only or artifact-only churn is treated as a blocked implementation, not as task completion
+
+### Reviewer and Tester Evidence
+
+Reviewer and tester phases must consume developer outputs, not just rerun generic logic.
+
+Minimum MVP expectations:
+
+- reviewer inspects the pushed commit hash plus the recorded developer verification results
+- reviewer can reject work when the intended implementation files were not changed or when verification evidence is missing
+- tester validates acceptance criteria and reports a clear continue / retry / blocked outcome
+- reviewer and tester outputs are written as visible target-scoped artifacts for the orchestrator and human operator
 
 ### State-Aware Runner
 
