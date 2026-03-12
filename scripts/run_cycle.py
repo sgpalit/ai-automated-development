@@ -152,13 +152,21 @@ def main() -> int:
         )
 
     def analyst_handler() -> None:
-        run_analyst_phase(goal=analyst_goal, repo_root=repo_root, dry_run=args.dry_run)
+        run_analyst_phase(
+            goal=analyst_goal,
+            target_repo_root=repo_root,
+            workspace_root=workspace_root,
+            target_name=target_config.name,
+            dry_run=args.dry_run,
+        )
 
     def planner_handler() -> None:
         nonlocal planner_result
         planner_result = run_planner_phase(
             goal=args.goal,
             repo_root=repo_root,
+            workspace_root=workspace_root,
+            target_name=target_config.name,
             dry_run=args.dry_run,
         )
 
@@ -166,6 +174,8 @@ def main() -> int:
         run_developer_phase(
             goal=args.goal,
             repo_root=repo_root,
+            workspace_root=workspace_root,
+            target_name=target_config.name,
             dry_run=args.dry_run,
             execute=args.execute,
             planned_task=planner_result.task_artifact if planner_result else None,
@@ -175,6 +185,8 @@ def main() -> int:
         run_reviewer_phase(
             goal=args.goal,
             repo_root=repo_root,
+            workspace_root=workspace_root,
+            target_name=target_config.name,
             dry_run=args.dry_run,
             planned_task=planner_result.task_artifact if planner_result else None,
         )
@@ -183,6 +195,8 @@ def main() -> int:
         run_tester_phase(
             goal=args.goal,
             repo_root=repo_root,
+            workspace_root=workspace_root,
+            target_name=target_config.name,
             dry_run=args.dry_run,
             planned_task=planner_result.task_artifact if planner_result else None,
         )

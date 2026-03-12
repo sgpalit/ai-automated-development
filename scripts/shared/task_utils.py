@@ -64,10 +64,10 @@ def extract_section(markdown: str, heading: str) -> str:
     return match.group(1).strip()
 
 
-def candidate_task_dirs(repo_root: Path) -> list[Path]:
+def candidate_task_dirs(workspace_root: Path, target_name: str) -> list[Path]:
     candidates = [
-        generated_tasks_dir(repo_root),
-        repo_root / "backlog" / "tasks",
+        generated_tasks_dir(workspace_root, target_name),
+        workspace_root / "backlog" / "tasks",
     ]
     return [path for path in candidates if path.exists()]
 
@@ -84,10 +84,10 @@ def parse_task_dependencies(markdown: str) -> tuple[str, ...]:
     return dependencies
 
 
-def load_task_records(repo_root: Path) -> list[TaskRecord]:
+def load_task_records(workspace_root: Path, target_name: str) -> list[TaskRecord]:
     records: list[TaskRecord] = []
 
-    for task_dir in candidate_task_dirs(repo_root):
+    for task_dir in candidate_task_dirs(workspace_root, target_name):
         for path in sorted(task_dir.glob("TASK-*.md")):
             task_number = extract_task_number(path)
             if task_number is None:
@@ -111,8 +111,8 @@ def load_task_records(repo_root: Path) -> list[TaskRecord]:
     return records
 
 
-def select_next_task(repo_root: Path) -> tuple[Path, str]:
-    records = load_task_records(repo_root)
+def select_next_task(workspace_root: Path, target_name: str) -> tuple[Path, str]:
+    records = load_task_records(workspace_root, target_name)
     if not records:
         raise FileNotFoundError(
             "No backlog tasks were found in agents/backlog/tasks or backlog/tasks."

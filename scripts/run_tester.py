@@ -60,25 +60,29 @@ def _read_text(path: Path) -> str:
 
 def resolve_inputs(
     repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
     goal: str | None,
     planned_task: tuple[Path, str] | None = None,
     explicit_task: str | None = None,
 ) -> TesterInputs:
     if explicit_task:
-        task_path = (repo_root / explicit_task).resolve()
+        task_path = (workspace_root / explicit_task).resolve()
         task_content = _read_text(task_path)
     else:
         task_path, task_content = select_developer_task(
             repo_root=repo_root,
             goal=goal,
+            workspace_root=workspace_root,
+            target_name=target_name,
             planned_task=planned_task,
         )
 
     task_code = extract_task_code(task_path).lower()
-    developer_artifact = developer_handoff_path(repo_root, task_code)
-    implementation_artifact = developer_implementation_path(repo_root, task_code)
-    reviewer_artifact = reviewer_report_path(repo_root, task_code)
-    report_path = tester_report_path(repo_root, task_code)
+    developer_artifact = developer_handoff_path(workspace_root, target_name, task_code)
+    implementation_artifact = developer_implementation_path(workspace_root, target_name, task_code)
+    reviewer_artifact = reviewer_report_path(workspace_root, target_name, task_code)
+    report_path = tester_report_path(workspace_root, target_name, task_code)
 
     return TesterInputs(
         task_path=task_path,
@@ -93,25 +97,27 @@ def resolve_inputs(
 def build_report(
     *,
     repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
     goal: str | None,
     inputs: TesterInputs,
 ) -> str:
     task_content = inputs.task_content
-    mvp_path = repo_root / "docs" / "mvp.md"
-    current_analysis_path = analysis_path(repo_root)
+    mvp_path = workspace_root / "docs" / "mvp.md"
+    current_analysis_path = analysis_path(workspace_root, target_name)
 
     developer_status = (
-        f"Found: `{inputs.developer_artifact.relative_to(repo_root)}`"
+        f"Found: `{inputs.developer_artifact.relative_to(workspace_root)}`"
         if inputs.developer_artifact
         else "Missing developer artifact."
     )
     implementation_status = (
-        f"Found: `{inputs.implementation_artifact.relative_to(repo_root)}`"
+        f"Found: `{inputs.implementation_artifact.relative_to(workspace_root)}`"
         if inputs.implementation_artifact
         else "Missing implementation artifact."
     )
     reviewer_status = (
-        f"Found: `{inputs.reviewer_artifact.relative_to(repo_root)}`"
+        f"Found: `{inputs.reviewer_artifact.relative_to(workspace_root)}`"
         if inputs.reviewer_artifact
         else "Missing reviewer artifact."
     )
@@ -134,7 +140,7 @@ def build_report(
             f"# Tester Report for {task_title}",
             "",
             "## Selected Task",
-            f"- Task file: `{inputs.task_path.relative_to(repo_root)}`",
+            f"- Task file: `{inputs.task_path.relative_to(workspace_root)}`",
             f"- Goal: {goal or 'No explicit goal provided; using current workflow context.'}",
             "",
             "## Artifact Check",
@@ -143,8 +149,8 @@ def build_report(
             f"- Reviewer artifact: {reviewer_status}",
             "",
             "## Workflow Grounding",
-            f"- MVP reference: `{mvp_path.relative_to(repo_root)}` expects tester validation before human acceptance.",
-            f"- Repository analysis: `{current_analysis_path.relative_to(repo_root)}` notes later workflow phases still need integration points and output contracts.",
+            f"- MVP reference: `{mvp_path.relative_to(workspace_root)}` expects tester validation before human acceptance.",
+            f"- Repository analysis: `{current_analysis_path.relative_to(workspace_root)}` notes later workflow phases still need integration points and output contracts.",
             "",
             "## Outcome",
             f"- Status: {outcome}",
@@ -161,17 +167,27 @@ def run_tester_phase(
     *,
     goal: str | None,
     repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
     dry_run: bool,
     planned_task: tuple[Path, str] | None = None,
     explicit_task: str | None = None,
 ) -> Path:
     inputs = resolve_inputs(
         repo_root=repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
         goal=goal,
         planned_task=planned_task,
         explicit_task=explicit_task,
     )
-    report = build_report(repo_root=repo_root, goal=goal, inputs=inputs)
+    report = build_report(
+        repo_root=repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
+        goal=goal,
+        inputs=inputs,
+    )
 
     if dry_run:
         print(f"[dry-run] Would write tester report: {inputs.report_path}")
@@ -180,16 +196,20 @@ def run_tester_phase(
 
     inputs.report_path.parent.mkdir(parents=True, exist_ok=True)
     inputs.report_path.write_text(report, encoding="utf-8")
-    print(f"Wrote tester report: {inputs.report_path.relative_to(repo_root)}")
+    print(f"Wrote tester report: {inputs.report_path.relative_to(workspace_root)}")
     return inputs.report_path
 
 
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo).resolve()
+    workspace_root = Path(".").resolve()
+    target_name = repo_root.name
     run_tester_phase(
         goal=args.goal,
         repo_root=repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
         dry_run=args.dry_run,
         explicit_task=args.task,
     )

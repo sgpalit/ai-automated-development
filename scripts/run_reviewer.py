@@ -54,13 +54,13 @@ def extract_pushed_commit_hash(handoff_text: str) -> str | None:
     return value
 
 
-def build_inputs_reviewed(repo_root: Path, task_path: Path) -> list[Path]:
+def build_inputs_reviewed(workspace_root: Path, target_name: str, task_path: Path) -> list[Path]:
     task_code = extract_task_code(task_path).lower()
     candidates = [
-        analysis_path(repo_root),
+        analysis_path(workspace_root, target_name),
         task_path,
-        developer_handoff_path(repo_root, task_code),
-        developer_implementation_path(repo_root, task_code),
+        developer_handoff_path(workspace_root, target_name, task_code),
+        developer_implementation_path(workspace_root, target_name, task_code),
     ]
     return [path for path in candidates if path.exists()]
 
@@ -161,7 +161,9 @@ def decide_review(task_text: str, missing_details: list[str], risks: list[str]) 
 
 def build_reviewer_report(
     goal: str,
-    repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
+    target_repo_root: Path,
     task_path: Path,
     task_text: str,
     analysis_text: str,
@@ -171,7 +173,11 @@ def build_reviewer_report(
     review_date = dt.date.today().isoformat()
     task_code = extract_task_code(task_path)
     pushed_commit_hash = extract_pushed_commit_hash(handoff_text)
-    inputs_reviewed = build_inputs_reviewed(repo_root=repo_root, task_path=task_path)
+    inputs_reviewed = build_inputs_reviewed(
+        workspace_root=workspace_root,
+        target_name=target_name,
+        task_path=task_path,
+    )
     objective = extract_section(task_text, "Objective")
     missing_details = detect_missing_plan_details(implementation_text=implementation_text, task_text=task_text)
     risks = analyze_risks(
@@ -186,7 +192,7 @@ def build_reviewer_report(
     )
     decision = decide_review(task_text=task_text, missing_details=missing_details, risks=risks)
 
-    inputs_text = "\n".join(f"- `{path.relative_to(repo_root)}`" for path in inputs_reviewed) or "- None"
+    inputs_text = "\n".join(f"- `{path.relative_to(workspace_root)}`" for path in inputs_reviewed) or "- None"
     missing_text = "\n".join(f"- {item}" for item in missing_details) or "- No major detail gaps detected in the implementation artifact."
     risks_text = "\n".join(f"- {item}" for item in risks)
     suggestions_text = "\n".join(f"- {item}" for item in suggestions)
@@ -207,7 +213,7 @@ def build_reviewer_report(
 ## Context
 - Goal: {goal}
 - Task ID: `{task_code}`
-- Repository Path: `{repo_root}`
+- Repository Path: `{target_repo_root}`
 - Review Date: {review_date}
 
 ## Inputs Reviewed
@@ -240,23 +246,29 @@ def build_reviewer_report(
 def run_reviewer_phase(
     goal: str | None,
     repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
     dry_run: bool,
     planned_task: tuple[Path, str] | None = None,
 ) -> Path:
     task_path, task_text = select_developer_task(
         repo_root=repo_root,
         goal=goal,
+        workspace_root=workspace_root,
+        target_name=target_name,
         planned_task=planned_task,
     )
     task_code = extract_task_code(task_path).lower()
-    report_path = reviewer_report_path(repo_root, task_code)
+    report_path = reviewer_report_path(workspace_root, target_name, task_code)
     report_dir = report_path.parent
-    analysis_text = read_if_exists(analysis_path(repo_root))
-    handoff_text = read_if_exists(developer_handoff_path(repo_root, task_code))
-    implementation_text = read_if_exists(developer_implementation_path(repo_root, task_code))
+    analysis_text = read_if_exists(analysis_path(workspace_root, target_name))
+    handoff_text = read_if_exists(developer_handoff_path(workspace_root, target_name, task_code))
+    implementation_text = read_if_exists(developer_implementation_path(workspace_root, target_name, task_code))
     report = build_reviewer_report(
         goal=goal or extract_section(task_text, "Objective") or task_code,
-        repo_root=repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
+        target_repo_root=repo_root,
         task_path=task_path,
         task_text=task_text,
         analysis_text=analysis_text,
@@ -280,7 +292,15 @@ def run_reviewer_phase(
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo).resolve()
-    run_reviewer_phase(goal=args.goal, repo_root=repo_root, dry_run=args.dry_run)
+    workspace_root = Path(".").resolve()
+    target_name = repo_root.name
+    run_reviewer_phase(
+        goal=args.goal,
+        repo_root=repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
+        dry_run=args.dry_run,
+    )
     return 0
 
 

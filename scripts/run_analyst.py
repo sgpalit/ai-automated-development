@@ -74,14 +74,14 @@ def build_repo_snapshot(repo_path: Path) -> str:
     return "\n".join(lines)
 
 
-def collect_repo_snapshot(repo_root: Path) -> dict[str, object]:
-    files = [path for path in repo_root.rglob("*") if path.is_file() and ".git" not in path.parts]
+def collect_repo_snapshot(target_repo_root: Path, workspace_root: Path, target_name: str) -> dict[str, object]:
+    files = [path for path in target_repo_root.rglob("*") if path.is_file() and ".git" not in path.parts]
     top_level_dirs = sorted(
-        [path.name for path in repo_root.iterdir() if path.is_dir() and path.name != ".git"]
+        [path.name for path in target_repo_root.iterdir() if path.is_dir() and path.name != ".git"]
     )
 
     def read_if_exists(path: str) -> str:
-        candidate = repo_root / path
+        candidate = target_repo_root / path
         return candidate.read_text(encoding="utf-8") if candidate.exists() else ""
 
     readme = read_if_exists("README.md")
@@ -92,8 +92,8 @@ def collect_repo_snapshot(repo_root: Path) -> dict[str, object]:
     return {
         "file_count": len(files),
         "top_level_dirs": top_level_dirs,
-        "has_backlog": generated_tasks_dir(repo_root).exists(),
-        "has_prompts": (repo_root / "prompts/agents").exists(),
+        "has_backlog": generated_tasks_dir(workspace_root, target_name).exists(),
+        "has_prompts": (workspace_root / "prompts/agents").exists(),
         "readme_preview": "\n".join(readme.splitlines()[:12]),
         "mvp_preview": "\n".join(mvp.splitlines()[:12]),
         "onboarding_preview": "\n".join(onboarding.splitlines()[:12]),
@@ -101,9 +101,15 @@ def collect_repo_snapshot(repo_root: Path) -> dict[str, object]:
     }
 
 
-def build_analysis_markdown(goal: str, repo_root: Path) -> str:
-    snapshot = collect_repo_snapshot(repo_root)
+def build_analysis_markdown(
+    goal: str,
+    target_repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
+) -> str:
+    snapshot = collect_repo_snapshot(target_repo_root, workspace_root, target_name)
     today = dt.date.today().isoformat()
+    analysis_rel_path = analysis_path(workspace_root, target_name).relative_to(workspace_root)
 
     return f"""## Context
 - Goal: {goal}
@@ -115,7 +121,7 @@ def build_analysis_markdown(goal: str, repo_root: Path) -> str:
   - docs/agent-handoff-contract.md
   - docs/target-repo-onboarding.md
   - docs/target-repo-context.md
-  - Repository structure under {repo_root.resolve()}
+  - Repository structure under {target_repo_root.resolve()}
 
 ## Decisions
 - The analysis follows the onboarding and repository-context guidance so planning is grounded in explicit repository evidence.
@@ -123,7 +129,7 @@ def build_analysis_markdown(goal: str, repo_root: Path) -> str:
 - Analyst output should be regenerated each run to keep planning grounded in current state.
 
 ## Artifacts
-- agents/analysis/repo-analysis.md: This analysis snapshot.
+- {analysis_rel_path}: This analysis snapshot.
 - Repository snapshot summary: file count, top-level directories, and documentation previews supporting onboarding intake.
 
 ## Open Questions / Risks
@@ -173,9 +179,20 @@ Use the repository snapshot and reviewed docs to capture:
 """
 
 
-def run_analyst_phase(goal: str, repo_root: Path, dry_run: bool) -> Path:
-    output_path = analysis_path(repo_root)
-    content = build_analysis_markdown(goal=goal, repo_root=repo_root)
+def run_analyst_phase(
+    goal: str,
+    target_repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
+    dry_run: bool,
+) -> Path:
+    output_path = analysis_path(workspace_root, target_name)
+    content = build_analysis_markdown(
+        goal=goal,
+        target_repo_root=target_repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
+    )
 
     if dry_run:
         print(f"[dry-run] Would write analyst output: {output_path}")
@@ -188,12 +205,12 @@ def run_analyst_phase(goal: str, repo_root: Path, dry_run: bool) -> Path:
     return output_path
 
 
-def run_llm_analyst(repo_path: Path) -> Path:
+def run_llm_analyst(target_repo_root: Path, workspace_root: Path, target_name: str) -> Path:
     from llm import run_prompt
 
-    prompt_path = repo_path / "prompts" / "agents" / "analyst.md"
+    prompt_path = workspace_root / "prompts" / "agents" / "analyst.md"
     analyst_prompt = prompt_path.read_text(encoding="utf-8")
-    repo_snapshot = build_repo_snapshot(repo_path)
+    repo_snapshot = build_repo_snapshot(target_repo_root)
 
     full_prompt = (
         f"{analyst_prompt}\n\n"
@@ -204,7 +221,7 @@ def run_llm_analyst(repo_path: Path) -> Path:
 
     output = run_prompt(full_prompt)
 
-    output_path = analysis_path(repo_path)
+    output_path = analysis_path(workspace_root, target_name)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(output, encoding="utf-8")
     return output_path
@@ -213,8 +230,16 @@ def run_llm_analyst(repo_path: Path) -> Path:
 def main() -> None:
     args = parse_args()
     if args.goal:
-        repo_path = Path(args.repo).resolve()
-        run_analyst_phase(goal=args.goal, repo_root=repo_path, dry_run=args.dry_run)
+        workspace_root = Path(".").resolve()
+        target_repo_root = Path(args.repo).resolve()
+        target_name = target_repo_root.name
+        run_analyst_phase(
+            goal=args.goal,
+            target_repo_root=target_repo_root,
+            workspace_root=workspace_root,
+            target_name=target_name,
+            dry_run=args.dry_run,
+        )
         return
 
     from dotenv import load_dotenv
@@ -227,8 +252,12 @@ def main() -> None:
         cli_state=None,
         config_name=os.getenv("TARGET_REPOSITORY_CONFIG"),
     )
-    repo_path = target_config.path
-    output_path = run_llm_analyst(repo_path)
+    workspace_root = Path(".").resolve()
+    output_path = run_llm_analyst(
+        target_repo_root=target_config.path,
+        workspace_root=workspace_root,
+        target_name=target_config.name,
+    )
     print(f"Wrote {output_path}")
 
 

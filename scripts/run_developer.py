@@ -139,20 +139,22 @@ def parse_args() -> argparse.Namespace:
 def select_developer_task(
     repo_root: Path,
     goal: str | None,
+    workspace_root: Path,
+    target_name: str,
     planned_task: tuple[Path, str] | None = None,
 ) -> tuple[Path, str]:
     if planned_task is not None and not goal:
         return planned_task
 
     if not goal:
-        return select_next_task(repo_root)
+        return select_next_task(workspace_root, target_name)
 
     marker = f"Planner Follow-up: {goal}"
 
     if planned_task is not None and marker in planned_task[1]:
         return planned_task
 
-    candidate_dirs = [generated_tasks_dir(repo_root), repo_root / "backlog" / "tasks"]
+    candidate_dirs = [generated_tasks_dir(workspace_root, target_name), workspace_root / "backlog" / "tasks"]
     for task_dir in candidate_dirs:
         matching_task = find_task_by_marker(task_dir, marker)
         if matching_task is not None:
@@ -165,7 +167,7 @@ def select_developer_task(
 
     if planned_task is not None:
         return planned_task
-    raise FileNotFoundError("Developer phase requires at least one backlog task in agents/backlog/tasks or backlog/tasks.")
+    raise FileNotFoundError("Developer phase requires at least one backlog task in the target-scoped workspace backlog.")
 
 
 def update_task_status(markdown: str, status: str) -> str:
@@ -256,6 +258,9 @@ def extract_explicit_repo_paths(
         if not rel_candidate.suffix and not candidate.exists():
             continue
 
+        if rel_candidate == Path(".env") or rel_candidate.name.startswith(".env."):
+            continue
+
         if any(part in SKIP_PATH_PARTS for part in rel_candidate.parts):
             continue
 
@@ -308,6 +313,9 @@ def suggest_likely_files(
         rel_path = path.relative_to(repo_root)
         rel_text = str(rel_path).lower()
         score = 0
+
+        if rel_path == Path(".env") or rel_path.name.startswith(".env."):
+            continue
 
         try:
             preview = path.read_text(encoding="utf-8")[:4000].lower()
@@ -650,6 +658,8 @@ def execute_developer_changes(
 def build_developer_handoff_markdown(
     goal: str,
     repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
     task_path: Path,
     task_content: str,
     pushed_commit_hash: str | None = None,
@@ -661,7 +671,7 @@ def build_developer_handoff_markdown(
 
     required_inputs = [
         f"`{source_task_path}`",
-        "`agents/analysis/repo-analysis.md`",
+        f"`{analysis_path(workspace_root, target_name).relative_to(workspace_root)}`",
         "`AGENTS.md`",
         "`docs/agent-workflow.md`",
         "`docs/agent-handoff-contract.md`",
@@ -877,6 +887,8 @@ def create_and_push_commit(
 def run_developer_phase(
     goal: str | None,
     repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
     dry_run: bool,
     execute: bool = False,
     planned_task: tuple[Path, str] | None = None,
@@ -884,12 +896,14 @@ def run_developer_phase(
     task_path, task_content = select_developer_task(
         repo_root=repo_root,
         goal=goal,
+        workspace_root=workspace_root,
+        target_name=target_name,
         planned_task=planned_task,
     )
     task_code = extract_task_code(task_path)
     resolved_goal = goal or extract_section(task_content, "Objective") or f"Implement {task_code}"
-    handoff_path = developer_handoff_path(repo_root, task_code)
-    implementation_path = developer_implementation_path(repo_root, task_code)
+    handoff_path = developer_handoff_path(workspace_root, target_name, task_code)
+    implementation_path = developer_implementation_path(workspace_root, target_name, task_code)
     implementation_dir = implementation_path.parent
     handoff_dir = handoff_path.parent
     implementation_content = build_implementation_prompt_markdown(
@@ -901,6 +915,8 @@ def run_developer_phase(
     pending_handoff = build_developer_handoff_markdown(
         goal=resolved_goal,
         repo_root=repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
         task_path=task_path,
         task_content=task_content,
         pushed_commit_hash=None,
@@ -980,6 +996,8 @@ def run_developer_phase(
     handoff_content = build_developer_handoff_markdown(
         goal=resolved_goal,
         repo_root=repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
         task_path=task_path,
         task_content=final_task_text,
         pushed_commit_hash=pushed_commit_hash,
@@ -994,9 +1012,13 @@ def run_developer_phase(
 def main() -> int:
     args = parse_args()
     repo_root = Path(args.repo).resolve()
+    workspace_root = Path(".").resolve()
+    target_name = repo_root.name
     run_developer_phase(
         goal=args.goal,
         repo_root=repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
         dry_run=args.dry_run,
         execute=args.execute,
     )

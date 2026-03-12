@@ -152,23 +152,23 @@ def read_text_if_exists(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
-def slug_task_statuses(repo_root: Path, slug: str) -> list[str]:
+def slug_task_statuses(workspace_root: Path, target_name: str, slug: str) -> list[str]:
     suffix = f"-{slug}.md"
     return [
         record.status
-        for record in load_task_records(repo_root)
+        for record in load_task_records(workspace_root, target_name)
         if record.path.name.endswith(suffix)
     ]
 
 
-def should_skip_candidate(repo_root: Path, slug: str) -> bool:
-    statuses = slug_task_statuses(repo_root, slug)
+def should_skip_candidate(workspace_root: Path, target_name: str, slug: str) -> bool:
+    statuses = slug_task_statuses(workspace_root, target_name, slug)
     return any(status in {"todo", "in-progress", "done"} for status in statuses)
 
 
-def detect_commit_push_gap(repo_root: Path, mvp_text: str, _analysis_text: str) -> MVPTaskCandidate | None:
-    run_developer_text = read_text_if_exists(repo_root / "scripts" / "run_developer.py").lower()
-    run_reviewer_text = read_text_if_exists(repo_root / "scripts" / "run_reviewer.py").lower()
+def detect_commit_push_gap(workspace_root: Path, target_name: str, mvp_text: str, _analysis_text: str) -> MVPTaskCandidate | None:
+    run_developer_text = read_text_if_exists(workspace_root / "scripts" / "run_developer.py").lower()
+    run_reviewer_text = read_text_if_exists(workspace_root / "scripts" / "run_reviewer.py").lower()
     mvp_requires = "commit and push" in mvp_text.lower() or (
         "push" in mvp_text.lower() and "commit" in mvp_text.lower()
     )
@@ -180,7 +180,7 @@ def detect_commit_push_gap(repo_root: Path, mvp_text: str, _analysis_text: str) 
     if not mvp_requires or developer_has_git_automation:
         return None
 
-    if should_skip_candidate(repo_root, "automate-developer-commit-push-in-mvp-mode"):
+    if should_skip_candidate(workspace_root, target_name, "automate-developer-commit-push-in-mvp-mode"):
         return None
 
     return MVPTaskCandidate(
@@ -219,9 +219,9 @@ def detect_commit_push_gap(repo_root: Path, mvp_text: str, _analysis_text: str) 
     )
 
 
-def detect_repo_state_gap(repo_root: Path, mvp_text: str, _analysis_text: str) -> MVPTaskCandidate | None:
-    run_cycle_text = read_text_if_exists(repo_root / "scripts" / "run_cycle.py")
-    env_example_text = read_text_if_exists(repo_root / ".env.example")
+def detect_repo_state_gap(workspace_root: Path, target_name: str, mvp_text: str, _analysis_text: str) -> MVPTaskCandidate | None:
+    run_cycle_text = read_text_if_exists(workspace_root / "scripts" / "run_cycle.py")
+    env_example_text = read_text_if_exists(workspace_root / ".env.example")
     mvp_requires = "repository state" in mvp_text.lower() and "mvp_done" in mvp_text.lower()
     repo_state_is_supported = (
         "TARGET_REPOSITORY_STATE" in run_cycle_text
@@ -233,7 +233,7 @@ def detect_repo_state_gap(repo_root: Path, mvp_text: str, _analysis_text: str) -
     if not mvp_requires or repo_state_is_supported:
         return None
 
-    if should_skip_candidate(repo_root, "add-explicit-target-repository-state-handling"):
+    if should_skip_candidate(workspace_root, target_name, "add-explicit-target-repository-state-handling"):
         return None
 
     return MVPTaskCandidate(
@@ -271,15 +271,15 @@ def detect_repo_state_gap(repo_root: Path, mvp_text: str, _analysis_text: str) -
     )
 
 
-def detect_autonomous_mvp_loop_gap(repo_root: Path, mvp_text: str, _analysis_text: str) -> MVPTaskCandidate | None:
-    run_cycle_text = read_text_if_exists(repo_root / "scripts" / "run_cycle.py").lower()
+def detect_autonomous_mvp_loop_gap(workspace_root: Path, target_name: str, mvp_text: str, _analysis_text: str) -> MVPTaskCandidate | None:
+    run_cycle_text = read_text_if_exists(workspace_root / "scripts" / "run_cycle.py").lower()
     mvp_requires = "loop repeats automatically" in mvp_text.lower() and "mvp_done" in mvp_text.lower()
     autonomous_loop_supported = "continue automatically" in run_cycle_text or "mvp_done" in run_cycle_text
 
     if not mvp_requires or autonomous_loop_supported:
         return None
 
-    if should_skip_candidate(repo_root, "add-mvp-mode-autonomous-continuation"):
+    if should_skip_candidate(workspace_root, target_name, "add-mvp-mode-autonomous-continuation"):
         return None
 
     return MVPTaskCandidate(
@@ -311,27 +311,28 @@ def detect_autonomous_mvp_loop_gap(repo_root: Path, mvp_text: str, _analysis_tex
     )
 
 
-def select_next_mvp_candidate(repo_root: Path, mvp_text: str, analysis_text: str) -> MVPTaskCandidate | None:
+def select_next_mvp_candidate(workspace_root: Path, target_name: str, mvp_text: str, analysis_text: str) -> MVPTaskCandidate | None:
     detectors = (
         detect_commit_push_gap,
         detect_repo_state_gap,
         detect_autonomous_mvp_loop_gap,
     )
     for detector in detectors:
-        candidate = detector(repo_root, mvp_text, analysis_text)
+        candidate = detector(workspace_root, target_name, mvp_text, analysis_text)
         if candidate is not None:
             return candidate
     return None
 
 
 def generate_next_mvp_task(
-    repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
     dry_run: bool,
 ) -> PlannerPhaseResult:
-    current_analysis_path = analysis_path(repo_root)
-    mvp_path = repo_root / "docs" / "mvp.md"
+    current_analysis_path = analysis_path(workspace_root, target_name)
+    mvp_path = workspace_root / "docs" / "mvp.md"
     missing_inputs = [
-        str(path.relative_to(repo_root))
+        str(path.relative_to(workspace_root))
         for path in (mvp_path, current_analysis_path)
         if not path.exists()
     ]
@@ -345,7 +346,8 @@ def generate_next_mvp_task(
     analysis_text = current_analysis_path.read_text(encoding="utf-8")
     mvp_text = mvp_path.read_text(encoding="utf-8")
     candidate = select_next_mvp_candidate(
-        repo_root=repo_root,
+        workspace_root=workspace_root,
+        target_name=target_name,
         mvp_text=mvp_text,
         analysis_text=analysis_text,
     )
@@ -353,11 +355,11 @@ def generate_next_mvp_task(
     if candidate is None:
         print(
             "Planner stopped cleanly: unable to derive a grounded next MVP task from "
-            "`docs/mvp.md` and `agents/analysis/repo-analysis.md`."
+            f"`docs/mvp.md` and `{current_analysis_path.relative_to(workspace_root)}`."
         )
         return PlannerPhaseResult(task_artifact=None, continue_to_implementation=False)
 
-    tasks_dir = generated_tasks_dir(repo_root)
+    tasks_dir = generated_tasks_dir(workspace_root, target_name)
     tasks_dir.mkdir(parents=True, exist_ok=True)
     task_id = next_task_number(tasks_dir)
     target = tasks_dir / f"TASK-{task_id:03d}-{candidate.slug}.md"
@@ -384,12 +386,22 @@ def generate_next_mvp_task(
     )
 
 
-def run_planner_phase(goal: str | None, repo_root: Path, dry_run: bool) -> PlannerPhaseResult:
+def run_planner_phase(
+    goal: str | None,
+    repo_root: Path,
+    workspace_root: Path,
+    target_name: str,
+    dry_run: bool,
+) -> PlannerPhaseResult:
     if not goal:
         try:
-            task_path, task_content = select_next_task(repo_root)
+            task_path, task_content = select_next_task(workspace_root, target_name)
         except FileNotFoundError:
-            return generate_next_mvp_task(repo_root=repo_root, dry_run=dry_run)
+            return generate_next_mvp_task(
+                workspace_root=workspace_root,
+                target_name=target_name,
+                dry_run=dry_run,
+            )
 
         message = f"Planner selected existing backlog task: {task_path}"
         if dry_run:
@@ -401,13 +413,13 @@ def run_planner_phase(goal: str | None, repo_root: Path, dry_run: bool) -> Plann
             continue_to_implementation=True,
         )
 
-    current_analysis_path = analysis_path(repo_root)
+    current_analysis_path = analysis_path(workspace_root, target_name)
     if not current_analysis_path.exists() and not dry_run:
         raise FileNotFoundError(
-            "Planner phase requires agents/analysis/repo-analysis.md. Run analyst first."
+            f"Planner phase requires {current_analysis_path.relative_to(workspace_root)}. Run analyst first."
         )
 
-    tasks_dir = generated_tasks_dir(repo_root)
+    tasks_dir = generated_tasks_dir(workspace_root, target_name)
     tasks_dir.mkdir(parents=True, exist_ok=True)
 
     marker = f"Planner Follow-up: {goal}"
@@ -443,9 +455,11 @@ def run_planner_phase(goal: str | None, repo_root: Path, dry_run: bool) -> Plann
 def run_llm_planner(repo_path: Path) -> list[Path]:
     from llm import run_prompt
 
-    current_analysis_path = analysis_path(repo_path)
-    planner_prompt_path = repo_path / "prompts" / "agents" / "planner.md"
-    tasks_dir = generated_tasks_dir(repo_path)
+    workspace_root = Path(".").resolve()
+    target_name = repo_path.name
+    current_analysis_path = analysis_path(workspace_root, target_name)
+    planner_prompt_path = workspace_root / "prompts" / "agents" / "planner.md"
+    tasks_dir = generated_tasks_dir(workspace_root, target_name)
 
     analysis_text = current_analysis_path.read_text(encoding="utf-8")
     planner_prompt = planner_prompt_path.read_text(encoding="utf-8")
@@ -502,7 +516,13 @@ def main() -> None:
     args = parse_args()
     if args.goal:
         repo_path = Path(args.repo).resolve()
-        run_planner_phase(goal=args.goal, repo_root=repo_path, dry_run=args.dry_run)
+        run_planner_phase(
+            goal=args.goal,
+            repo_root=repo_path,
+            workspace_root=Path(".").resolve(),
+            target_name=repo_path.name,
+            dry_run=args.dry_run,
+        )
         return
 
     from dotenv import load_dotenv
